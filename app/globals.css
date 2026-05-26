@@ -25,3 +25,21 @@ body {
     text-wrap: balance;
   }
 }
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.tab-slide-right {
+  animation: slideInRight 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.tab-slide-left {
+  animation: slideInLeft 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}

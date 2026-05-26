@@ -69,9 +69,10 @@ interface CreateSkillModalProps {
   open: boolean
   onClose: () => void
   onSubmit: (skill: CreateSkillInput) => void
+  initialData?: Partial<CreateSkillInput> | null
 }
 
-export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkillModalProps) {
+export default function CreateSkillModal({ open, onClose, onSubmit, initialData }: CreateSkillModalProps) {
   const [form, setForm] = useState<CreateSkillInput>(emptyForm())
   const [errors, setErrors] = useState<Partial<Record<'name', string>>>({})
   const [view, setView] = useState<RepoView>({ mode: 'browse', path: '' })
@@ -86,7 +87,8 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
 
   useEffect(() => {
     if (open) {
-      setForm(emptyForm())
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      setForm(initialData ? { ...emptyForm(), ...initialData } : emptyForm())
       setErrors({})
       setView({ mode: 'browse', path: '' })
       setEmptyFolders(new Set())
@@ -94,6 +96,8 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
       setNewFileName('')
       setTimeout(() => nameRef.current?.focus(), 50)
     }
+  // initialData is intentionally excluded: we only want to read it at the moment `open` turns true
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {

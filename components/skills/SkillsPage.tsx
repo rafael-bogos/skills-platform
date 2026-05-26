@@ -1,14 +1,18 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle } from 'lucide-react'
+import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import CreateSkillModal from '@/components/skills/CreateSkillModal'
 import ViewSkillModal from '@/components/skills/ViewSkillModal'
+import LearnTab from '@/components/skills/LearnTab'
 import { CATEGORIES, getCategoryIcon } from '@/components/skills/CategorySelect'
 import { cn } from '@/lib/utils'
 import type { CreateSkillInput, Skill, SkillStatus } from '@/types'
+
+type ActiveTab = 'skills' | 'learn'
+const TAB_ORDER: ActiveTab[] = ['skills', 'learn']
 
 const STATUS_BADGE = {
   active:   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -21,10 +25,18 @@ const STATUS_DOT = {
 const STATUS_LABELS = { active: 'Ativa', draft: 'Rascunho', archived: 'Arquivada' }
 
 export default function SkillsPage() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>('skills')
+  const [tabDir, setTabDir] = useState<'left' | 'right'>('right')
+
+  function changeTab(next: ActiveTab) {
+    setTabDir(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(activeTab) ? 'right' : 'left')
+    setActiveTab(next)
+  }
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createInitialData, setCreateInitialData] = useState<Partial<CreateSkillInput> | null>(null)
   const [viewingSkill, setViewingSkill] = useState<Skill | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Skill | null>(null)
 
@@ -103,6 +115,16 @@ export default function SkillsPage() {
   const activeCount = skills.filter((s) => s.status === 'active').length
   const draftCount  = skills.filter((s) => s.status === 'draft').length
 
+  function handleOpenCreateModal(data?: Partial<CreateSkillInput>) {
+    setCreateInitialData(data ?? null)
+    setCreateOpen(true)
+  }
+
+  function handleModalClose() {
+    setCreateOpen(false)
+    setCreateInitialData(null)
+  }
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
       {/* ── Header ── */}
@@ -116,16 +138,57 @@ export default function SkillsPage() {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              Nova Skill
-            </Button>
+            {activeTab === 'skills' && (
+              <Button size="sm" onClick={() => handleOpenCreateModal()}>
+                <Plus className="h-3.5 w-3.5" />
+                Nova Skill
+              </Button>
+            )}
           </div>
         </div>
       </header>
 
       {/* ── Main ── */}
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+
+        {/* ── Tab navigation ── */}
+        <div className="relative mb-8 flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900/70">
+          {/* Sliding pill indicator */}
+          <div
+            aria-hidden
+            className="absolute inset-y-1 left-1 w-[calc(50%-6px)] rounded-lg bg-primary-600 shadow-md transition-transform duration-200 ease-out dark:bg-primary-500"
+            style={{ transform: activeTab === 'learn' ? 'translateX(calc(100% + 4px))' : 'translateX(0)' }}
+          />
+          {([
+            { id: 'skills', icon: Layers, label: 'Minhas Skills' },
+            { id: 'learn',  icon: BookOpen, label: 'Aprender' },
+          ] as const).map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => changeTab(id)}
+              className={cn(
+                'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150',
+                activeTab === id
+                  ? 'text-white'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200',
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Learn tab ── */}
+        {activeTab === 'learn' && (
+          <div key="learn" className={tabDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
+            <LearnTab />
+          </div>
+        )}
+
+        {/* ── Skills tab ── */}
+        {activeTab === 'skills' && (
+        <div key="skills" className={tabDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
         {/* Page title */}
         <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -283,7 +346,7 @@ export default function SkillsPage() {
           {/* New skill card — hide when actively filtering */}
           {!loading && !isFiltered && (
             <button
-              onClick={() => setCreateOpen(true)}
+              onClick={() => handleOpenCreateModal()}
               className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
             >
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
@@ -329,17 +392,20 @@ export default function SkillsPage() {
                 Crie sua primeira skill para o Claude usar.
               </p>
             </div>
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button onClick={() => handleOpenCreateModal()}>
               <Plus className="h-4 w-4" /> Criar primeira skill
             </Button>
           </div>
+        )}
+        </div>
         )}
       </main>
 
       <CreateSkillModal
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={handleModalClose}
         onSubmit={handleCreate}
+        initialData={createInitialData}
       />
       <ViewSkillModal
         skill={viewingSkill}
