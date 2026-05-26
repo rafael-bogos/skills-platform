@@ -22,12 +22,25 @@ function emptyForm(): CreateSkillInput {
 }
 
 type DirItem =
-  | { kind: 'file';   name: string; file: SkillFile }
+  | { kind: 'file'; name: string; file: SkillFile }
   | { kind: 'folder'; name: string }
 
-function listDirectory(files: SkillFile[], dirPath: string): DirItem[] {
+function listDirectory(files: SkillFile[], dirPath: string, knownFolders: Set<string> = new Set()): DirItem[] {
   const prefix = dirPath ? `${dirPath}/` : ''
   const seen = new Map<string, DirItem>()
+
+  // include explicitly-created empty folders that are direct children of dirPath
+  for (const folder of knownFolders) {
+    if (dirPath) {
+      if (folder.startsWith(prefix)) {
+        const rest = folder.slice(prefix.length)
+        if (rest && !rest.includes('/')) seen.set(rest, { kind: 'folder', name: rest })
+      }
+    } else {
+      if (!folder.includes('/')) seen.set(folder, { kind: 'folder', name: folder })
+    }
+  }
+
   for (const file of files) {
     if (!file.name.startsWith(prefix)) continue
     const rest = file.name.slice(prefix.length)
@@ -48,7 +61,7 @@ function listDirectory(files: SkillFile[], dirPath: string): DirItem[] {
 
 type RepoView =
   | { mode: 'browse'; path: string }
-  | { mode: 'edit';   file: SkillFile }
+  | { mode: 'edit'; file: SkillFile }
 
 // ── component ────────────────────────────────────────────────────────────────
 
@@ -60,8 +73,9 @@ interface CreateSkillModalProps {
 
 export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkillModalProps) {
   const [form, setForm] = useState<CreateSkillInput>(emptyForm())
-  const [errors, setErrors] = useState<Partial<Record<'name' | 'description', string>>>({})
+  const [errors, setErrors] = useState<Partial<Record<'name', string>>>({})
   const [view, setView] = useState<RepoView>({ mode: 'browse', path: '' })
+  const [emptyFolders, setEmptyFolders] = useState<Set<string>>(new Set())
   const [addingFile, setAddingFile] = useState(false)
   const [addingFolder, setAddingFolder] = useState(false)
   const [newFileName, setNewFileName] = useState('')
@@ -75,6 +89,7 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
       setForm(emptyForm())
       setErrors({})
       setView({ mode: 'browse', path: '' })
+      setEmptyFolders(new Set())
       setAddingFile(false)
       setNewFileName('')
       setTimeout(() => nameRef.current?.focus(), 50)
@@ -83,8 +98,14 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    if (open) document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
+    if (open) {
+      document.addEventListener('keydown', handler)
+      document.body.style.overflow = 'hidden'
+    }
+    return () => {
+      document.removeEventListener('keydown', handler)
+      document.body.style.overflow = ''
+    }
   }, [open, onClose])
 
   useEffect(() => {
@@ -96,9 +117,7 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
 
   function setMeta(key: 'name' | 'description' | 'category' | 'status', value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
-    if (key === 'name' || key === 'description') {
-      setErrors((prev) => ({ ...prev, [key]: undefined }))
-    }
+    if (key === 'name') setErrors((prev) => ({ ...prev, name: undefined }))
   }
 
   function updateFileContent(id: string, content: string) {
@@ -159,18 +178,19 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
     if (rawName.includes('/')) return
     const dirPath = view.mode === 'browse' ? view.path : ''
     const fullName = dirPath ? `${dirPath}/${rawName}` : rawName
-    const exists = form.files.some(f => f.name === fullName || f.name.startsWith(fullName + '/'))
+    const alreadyKnown = emptyFolders.has(fullName)
+    const exists = alreadyKnown || form.files.some(f => f.name === fullName || f.name.startsWith(fullName + '/'))
     if (exists) return
-    // simplesmente navega para a nova pasta (não existe representação separada de pasta nos files)
+    setEmptyFolders((prev) => new Set([...prev, fullName]))
     setAddingFolder(false)
     setNewFolderName('')
     setView({ mode: 'browse', path: fullName })
   }
 
   function removeFolder(folderPath: string) {
-    // só remove se estiver vazia
     const hasFiles = form.files.some(f => f.name.startsWith(folderPath + '/'))
     if (hasFiles) return
+    setEmptyFolders((prev) => { const next = new Set(prev); next.delete(folderPath); return next })
     if (view.mode === 'browse' && view.path === folderPath) navigateBack()
     if (view.mode === 'edit' && view.file.name.startsWith(folderPath + '/')) navigateBack()
   }
@@ -178,7 +198,6 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
   function validate() {
     const next: typeof errors = {}
     if (!form.name.trim()) next.name = 'Nome é obrigatório'
-    if (!form.description.trim()) next.description = 'Descreva quando o Claude deve usar esta skill'
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -195,7 +214,7 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
   const currentFile = view.mode === 'edit' ? view.file : null
   const dirPath = view.mode === 'browse' ? view.path : view.file.name.split('/').slice(0, -1).join('/')
   const crumbs = dirPath ? dirPath.split('/') : []
-  const items = view.mode === 'browse' ? listDirectory(form.files, view.path) : []
+  const items = view.mode === 'browse' ? listDirectory(form.files, view.path, emptyFolders) : []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -246,62 +265,42 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
                 {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
               </div>
 
-              {/* Descrição / Gatilho */}
-              <div
-                className={cn(
-                  'space-y-2 rounded-xl border-2 p-4 transition-colors',
-                  errors.description
-                    ? 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/20'
-                    : 'border-primary-200 bg-primary-50/60 dark:border-primary-900 dark:bg-primary-950/30',
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-primary-700 dark:text-primary-400">
-                    Descrição <span className="text-red-400">*</span>
-                  </label>
-                  <span className="flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-600 dark:bg-primary-900/50 dark:text-primary-400">
-                    <Sparkles className="h-3 w-3" />
-                    Gatilho do Claude
-                  </span>
-                </div>
+              {/* Descrição */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Descrição{' '}
+                  <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
+                </label>
                 <textarea
                   rows={2}
                   value={form.description}
                   onChange={(e) => setMeta('description', e.target.value)}
                   placeholder="ex: Use esta skill sempre que o usuário pedir para criar componentes React..."
-                  className={cn(
-                    'w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400',
-                    'transition-colors focus:outline-none focus:ring-2 focus:ring-offset-0',
-                    'dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500',
-                    errors.description
-                      ? 'border-red-300 focus:border-red-400 focus:ring-red-200 dark:border-red-700'
-                      : 'border-primary-200 focus:border-primary-500 focus:ring-primary-100 dark:border-primary-800 dark:focus:ring-primary-950',
-                  )}
+                  className={inputCn(false) + ' resize-none'}
                 />
-                {errors.description && <p className="text-xs text-red-500 dark:text-red-400">{errors.description}</p>}
               </div>
 
               {/* Categoria + Status */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Categoria</label>
                   <CategorySelect value={form.category} onChange={(v) => setMeta('category', v)} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {(['draft', 'active'] as SkillStatus[]).map((s) => (
                       <label
                         key={s}
                         className={cn(
-                          'flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-medium transition-colors',
+                          'flex cursor-pointer items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors',
                           form.status === s
                             ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-600 dark:bg-primary-950 dark:text-primary-300'
                             : 'border-slate-200 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400',
                         )}
                       >
                         <input type="radio" name="status" value={s} checked={form.status === s} onChange={() => setMeta('status', s)} className="sr-only" />
-                        <span className={cn('h-1.5 w-1.5 rounded-full', s === 'active' ? 'bg-emerald-500' : 'bg-slate-400')} />
+                        <span className={cn('h-2 w-2 shrink-0 rounded-full', s === 'active' ? 'bg-emerald-500' : 'bg-slate-400')} />
                         {s === 'active' ? 'Ativa' : 'Rascunho'}
                       </label>
                     ))}
@@ -330,7 +329,10 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
                   <button
                     type="button"
                     onClick={() => { setAddingFile(false); setView({ mode: 'browse', path: '' }) }}
-                    className="shrink-0 text-primary-600 hover:underline dark:text-primary-400"
+                    className={cn(
+                      'min-w-0 text-primary-600 hover:underline dark:text-primary-400',
+                      crumbs.length === 0 && !currentFile ? 'truncate' : 'shrink-0 max-w-[8rem] truncate',
+                    )}
                   >
                     {repoName}
                   </button>
@@ -338,14 +340,17 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
                     const crumbPath = crumbs.slice(0, i + 1).join('/')
                     const isLast = i === crumbs.length - 1 && !currentFile
                     return (
-                      <span key={crumbPath} className="flex shrink-0 items-center gap-0.5">
-                        <ChevronRight className="h-3 w-3 text-slate-400" />
+                      <span key={crumbPath} className="flex min-w-0 shrink-0 items-center gap-0.5">
+                        <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />
                         <button
                           type="button"
                           onClick={() => { setAddingFile(false); setView({ mode: 'browse', path: crumbPath }) }}
-                          className={isLast
-                            ? 'font-semibold text-slate-700 dark:text-slate-200'
-                            : 'text-primary-600 hover:underline dark:text-primary-400'}
+                          className={cn(
+                            'min-w-0 truncate',
+                            isLast
+                              ? 'max-w-[10rem] font-semibold text-slate-700 dark:text-slate-200'
+                              : 'max-w-[6rem] text-primary-600 hover:underline dark:text-primary-400',
+                          )}
                         >
                           {part}
                         </button>
@@ -353,9 +358,9 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
                     )
                   })}
                   {currentFile && (
-                    <span className="flex shrink-0 items-center gap-0.5">
-                      <ChevronRight className="h-3 w-3 text-slate-400" />
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    <span className="flex min-w-0 shrink items-center gap-0.5">
+                      <ChevronRight className="h-3 w-3 shrink-0 text-slate-400" />
+                      <span className="min-w-0 truncate font-semibold text-slate-700 dark:text-slate-200">
                         {currentFile.name.split('/').pop()}
                       </span>
                     </span>
@@ -403,15 +408,16 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
                   {items.map((item) => (
                     <div
                       key={item.name}
-                      className="group flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30"
+                      onClick={() => item.kind === 'folder'
+                        ? openFolder(view.path ? `${view.path}/${item.name}` : item.name)
+                        : openFile(item.file)
+                      }
+                      className="group flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-2.5 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/30"
                     >
                       {item.kind === 'folder' ? (
                         <>
                           <FolderOpen className="h-4 w-4 shrink-0 text-amber-400" />
-                          <span
-                            className="flex-1 font-mono text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"
-                            onClick={() => openFolder(view.path ? `${view.path}/${item.name}` : item.name)}
-                          >
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
                             {item.name}/
                           </span>
                           {(() => {
@@ -437,12 +443,11 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
                           )} />
                           <span
                             className={cn(
-                              'flex-1 font-mono text-xs',
+                              'min-w-0 flex-1 truncate font-mono text-xs',
                               item.file.name === 'SKILL.md'
                                 ? 'font-semibold text-slate-800 dark:text-slate-200'
                                 : 'text-slate-700 dark:text-slate-300',
                             )}
-                            onClick={() => openFile(item.file)}
                           >
                             {item.name}
                           </span>
@@ -547,11 +552,7 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
                     rows={14}
                     value={view.file.content}
                     onChange={(e) => updateFileContent(view.file.id, e.target.value)}
-                    placeholder={
-                      view.file.name === 'SKILL.md'
-                        ? `---\nname: ${repoName}\ndescription: |\n  ${form.description || 'Descreva o gatilho aqui'}\n---\n\n# ${repoName}\n\n## Como usar\n\nDescreva como o Claude deve executar esta skill.\n\n## Exemplos\n\nAdicione exemplos de uso.`
-                        : '# Título\n\nConteúdo em markdown...'
-                    }
+                    placeholder="Conteúdo em markdown..."
                     autoFocus
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-xs text-slate-800 placeholder-slate-300 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:placeholder-slate-600 dark:focus:ring-primary-950"
                   />

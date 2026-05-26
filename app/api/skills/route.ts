@@ -16,23 +16,22 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { name, description, category, status, files: inputFiles } = body
 
-    if (!name?.trim() || !description?.trim()) {
-      return NextResponse.json({ error: 'name e description são obrigatórios' }, { status: 400 })
+    if (!name?.trim()) {
+      return NextResponse.json({ error: 'name é obrigatório' }, { status: 400 })
     }
 
-    const defaultMd = buildDefaultSkillMd(name.trim(), description.trim())
     const files = inputFiles?.length
       ? inputFiles.map((f: { id?: string; name: string; content: string }) => ({
           id: f.id ?? crypto.randomUUID(),
           name: f.name,
-          content: f.content?.trim() || (f.name === 'SKILL.md' ? defaultMd : ''),
+          content: f.content ?? '',
         }))
-      : [{ id: crypto.randomUUID(), name: 'SKILL.md', content: defaultMd }]
+      : [{ id: crypto.randomUUID(), name: 'SKILL.md', content: '' }]
 
     const skill = await prisma.skill.create({
       data: {
         name: name.trim(),
-        description: description.trim(),
+        description: description?.trim() ?? '',
         category: category?.trim() ?? '',
         status: (status as SkillStatus) ?? 'draft',
         files,
@@ -45,25 +44,3 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function buildDefaultSkillMd(name: string, description: string) {
-  return `---
-name: ${name}
-description: |
-  ${description}
----
-
-# ${name}
-
-${description}
-
----
-
-## Como usar
-
-Descreva aqui como o Claude deve executar esta skill.
-
-## Exemplos
-
-Adicione exemplos de uso.
-`
-}

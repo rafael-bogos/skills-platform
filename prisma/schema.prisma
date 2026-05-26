@@ -16,7 +16,7 @@ type SkillFile {
 model Skill {
   id          String      @id @default(auto()) @map("_id") @db.ObjectId
   name        String
-  description String
+  description String @default("")
   category    String      @default("")
   status      SkillStatus @default(draft)
   files       SkillFile[]

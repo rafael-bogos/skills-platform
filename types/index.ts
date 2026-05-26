@@ -31,7 +31,7 @@ export interface Skill {
 
 export interface CreateSkillInput {
   name: string
-  description: string
+  description?: string
   category: string
   status: SkillStatus
   files: SkillFile[]
