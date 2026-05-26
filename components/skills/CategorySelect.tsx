@@ -37,20 +37,23 @@ export default function CategorySelect({
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<DropdownPos>({ left: 0, width: 0 })
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLUListElement>(null)
   const selected = CATEGORIES.find((c) => c.value === value)
 
   useEffect(() => {
     function handleClose(e: MouseEvent) {
-      if (buttonRef.current && !buttonRef.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (
+        buttonRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      ) return
+      setOpen(false)
     }
-    function handleScroll() { setOpen(false) }
     if (open) {
       document.addEventListener('mousedown', handleClose)
-      document.addEventListener('scroll', handleScroll, true)
     }
     return () => {
       document.removeEventListener('mousedown', handleClose)
-      document.removeEventListener('scroll', handleScroll, true)
     }
   }, [open])
 
@@ -68,6 +71,7 @@ export default function CategorySelect({
 
   const dropdown = open && (
     <ul
+      ref={dropdownRef}
       style={{ position: 'fixed', zIndex: 9999, left: pos.left, width: pos.width, ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }) }}
       className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800"
     >
