@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+type SkillFile {
+  id      String
+  name    String
+  content String
+}
+
+model Skill {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String
+  category    String      @default("")
+  status      SkillStatus @default(draft)
+  files       SkillFile[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum SkillStatus {
+  active
+  draft
+  archived
+}
