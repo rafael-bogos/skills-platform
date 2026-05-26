@@ -14,19 +14,20 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, description, category, status, skillContent } = body
+    const { name, description, category, status, files: inputFiles } = body
 
     if (!name?.trim() || !description?.trim()) {
       return NextResponse.json({ error: 'name e description são obrigatórios' }, { status: 400 })
     }
 
-    const files = [
-      {
-        id: crypto.randomUUID(),
-        name: 'SKILL.md',
-        content: skillContent?.trim() ?? buildDefaultSkillMd(name.trim(), description.trim()),
-      },
-    ]
+    const defaultMd = buildDefaultSkillMd(name.trim(), description.trim())
+    const files = inputFiles?.length
+      ? inputFiles.map((f: { id?: string; name: string; content: string }) => ({
+          id: f.id ?? crypto.randomUUID(),
+          name: f.name,
+          content: f.content?.trim() || (f.name === 'SKILL.md' ? defaultMd : ''),
+        }))
+      : [{ id: crypto.randomUUID(), name: 'SKILL.md', content: defaultMd }]
 
     const skill = await prisma.skill.create({
       data: {

@@ -34,5 +34,5 @@ export interface CreateSkillInput {
   description: string
   category: string
   status: SkillStatus
-  skillContent?: string
+  files: SkillFile[]
 }
