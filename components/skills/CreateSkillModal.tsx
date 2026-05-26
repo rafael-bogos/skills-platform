@@ -251,14 +251,19 @@ export default function CreateSkillModal({ open, onClose, onSubmit }: CreateSkil
             <div className="space-y-4 px-6 py-5">
               {/* Nome */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                  Nome <span className="text-red-400">*</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                    Nome <span className="text-red-400">*</span>
+                  </label>
+                  <span className={cn('text-xs tabular-nums', form.name.length >= 50 ? 'text-red-400' : 'text-slate-400 dark:text-slate-500')}>
+                    {form.name.length}/50
+                  </span>
+                </div>
                 <input
                   ref={nameRef}
                   type="text"
                   value={form.name}
-                  onChange={(e) => setMeta('name', e.target.value)}
+                  onChange={(e) => setMeta('name', e.target.value.slice(0, 50))}
                   placeholder="ex: frontend-design, code-review"
                   className={inputCn(!!errors.name)}
                 />

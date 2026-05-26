@@ -19,8 +19,8 @@ interface ViewSkillModalProps {
 }
 
 const STATUS_BADGE: Record<SkillStatus, string> = {
-  active:   'bg-emerald-400/20 text-emerald-300 ring-1 ring-emerald-400/30',
-  draft:    'bg-white/10 text-white/60 ring-1 ring-white/20',
+  active: 'bg-emerald-400/20 text-emerald-300 ring-1 ring-emerald-400/30',
+  draft: 'bg-white/10 text-white/60 ring-1 ring-white/20',
   archived: 'bg-white/10 text-white/40 ring-1 ring-white/15',
 }
 const STATUS_LABELS: Record<SkillStatus, string> = {
@@ -85,7 +85,7 @@ function groupFiles(files: SkillFile[]) {
     if (slash === -1) root.push(f)
     else {
       const folder = f.name.slice(0, slash)
-      ;(folders[folder] ??= []).push(f)
+        ; (folders[folder] ??= []).push(f)
     }
   }
   return { root, folders }
@@ -269,7 +269,7 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete }: V
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20 backdrop-blur-sm">
               <CategoryIcon className="h-7 w-7 text-white" />
             </div>
-            <div className="min-w-0 flex-1 pt-0.5">
+            <div className="min-w-0 flex-1 pr-10 pt-0.5">
               <h2 className="truncate font-mono text-xl font-bold leading-tight text-white">
                 {skill.name}
               </h2>
@@ -320,8 +320,13 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete }: V
             ) : (
               <>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Nome</label>
-                  <input type="text" value={form.name} onChange={(e) => setField('name', e.target.value)} className={inputCn} autoFocus />
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Nome</label>
+                    <span className={cn('text-xs tabular-nums', form.name.length >= 50 ? 'text-red-400' : 'text-slate-400 dark:text-slate-500')}>
+                      {form.name.length}/50
+                    </span>
+                  </div>
+                  <input type="text" value={form.name} onChange={(e) => setField('name', e.target.value.slice(0, 50))} className={inputCn} autoFocus />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-600 dark:text-slate-400">

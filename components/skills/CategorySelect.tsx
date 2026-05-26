@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Code2, PenLine, BarChart2, SearchCheck,
   Container, Search, Shapes, ChevronDown, Check,
@@ -22,6 +23,8 @@ export function getCategoryIcon(category: string): LucideIcon {
   return CATEGORIES.find((c) => c.value === category)?.Icon ?? Shapes
 }
 
+type DropdownPos = { top?: number; bottom?: number; left: number; width: number }
+
 export default function CategorySelect({
   value,
   onChange,
@@ -32,22 +35,93 @@ export default function CategorySelect({
   dropdownDirection?: 'up' | 'down'
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<DropdownPos>({ left: 0, width: 0 })
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const selected = CATEGORIES.find((c) => c.value === value)
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    function handleClose(e: MouseEvent) {
+      if (buttonRef.current && !buttonRef.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+    function handleScroll() { setOpen(false) }
+    if (open) {
+      document.addEventListener('mousedown', handleClose)
+      document.addEventListener('scroll', handleScroll, true)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClose)
+      document.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [open])
+
+  function handleToggle() {
+    if (!open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setPos(
+        dropdownDirection === 'up'
+          ? { bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width }
+          : { top: rect.bottom + 6, left: rect.left, width: rect.width },
+      )
+    }
+    setOpen((o) => !o)
+  }
+
+  const dropdown = open && (
+    <ul
+      style={{ position: 'fixed', zIndex: 9999, left: pos.left, width: pos.width, ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }) }}
+      className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800"
+    >
+      <li>
+        <button
+          type="button"
+          onClick={() => { onChange(''); setOpen(false) }}
+          className={cn(
+            'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors',
+            !value
+              ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+              : 'text-slate-400 hover:bg-slate-50 dark:text-slate-500 dark:hover:bg-slate-700/50',
+          )}
+        >
+          <span className="flex h-4 w-4 items-center justify-center">
+            <span className="h-px w-3 bg-current" />
+          </span>
+          Nenhuma
+        </button>
+      </li>
+      {CATEGORIES.map((c) => (
+        <li key={c.value}>
+          <button
+            type="button"
+            onClick={() => { onChange(c.value); setOpen(false) }}
+            className={cn(
+              'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors',
+              value === c.value
+                ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700/50',
+            )}
+          >
+            <c.Icon
+              className={cn(
+                'h-4 w-4',
+                value === c.value ? 'text-primary-500 dark:text-primary-400' : 'text-slate-400 dark:text-slate-500',
+              )}
+            />
+            {c.label}
+            {value === c.value && (
+              <Check className="ml-auto h-3.5 w-3.5 text-primary-500 dark:text-primary-400" />
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggle}
         className={cn(
           'flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2 text-sm transition-colors',
           'focus:outline-none focus:ring-2 focus:ring-primary-100 focus:ring-offset-0',
@@ -68,57 +142,7 @@ export default function CategorySelect({
         <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')} />
       </button>
 
-      {open && (
-        <ul
-          className={cn(
-            'absolute z-20 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800',
-            dropdownDirection === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
-          )}
-        >
-          <li>
-            <button
-              type="button"
-              onClick={() => { onChange(''); setOpen(false) }}
-              className={cn(
-                'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors',
-                !value
-                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
-                  : 'text-slate-400 hover:bg-slate-50 dark:text-slate-500 dark:hover:bg-slate-700/50',
-              )}
-            >
-              <span className="flex h-4 w-4 items-center justify-center">
-                <span className="h-px w-3 bg-current" />
-              </span>
-              Nenhuma
-            </button>
-          </li>
-          {CATEGORIES.map((c) => (
-            <li key={c.value}>
-              <button
-                type="button"
-                onClick={() => { onChange(c.value); setOpen(false) }}
-                className={cn(
-                  'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors',
-                  value === c.value
-                    ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
-                    : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700/50',
-                )}
-              >
-                <c.Icon
-                  className={cn(
-                    'h-4 w-4',
-                    value === c.value ? 'text-primary-500 dark:text-primary-400' : 'text-slate-400 dark:text-slate-500',
-                  )}
-                />
-                {c.label}
-                {value === c.value && (
-                  <Check className="ml-auto h-3.5 w-3.5 text-primary-500 dark:text-primary-400" />
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {typeof window !== 'undefined' && createPortal(dropdown, document.body)}
     </div>
   )
 }
