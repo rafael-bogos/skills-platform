@@ -27,6 +27,25 @@ export interface Skill {
   files: SkillFile[]
   createdAt: string
   updatedAt: string
+  userId: string | null
+  organizationId: string | null
+}
+
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  logo: string | null
+  createdAt: string
+}
+
+export interface OrgMember {
+  id: string
+  userId: string
+  organizationId: string
+  role: 'owner' | 'admin' | 'member'
+  createdAt: string
+  user: { name: string; email: string; image: string | null }
 }
 
 export interface CreateSkillInput {

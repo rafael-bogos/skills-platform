@@ -1,22 +1,27 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import ThemeToggle from '@/components/ui/ThemeToggle'
+import { UserAvatar } from '@/components/ui/UserAvatar'
 import CreateSkillModal from '@/components/skills/CreateSkillModal'
 import ViewSkillModal from '@/components/skills/ViewSkillModal'
 import LearnTab from '@/components/skills/LearnTab'
+import { OrgSwitcher } from '@/components/skills/OrgSwitcher'
 import { CATEGORIES, getCategoryIcon } from '@/components/skills/CategorySelect'
 import { cn } from '@/lib/utils'
+import { authClient } from '@/lib/auth-client'
+import logoSkillHub from '@/public/logo-skillhub.png'
 import type { CreateSkillInput, Skill, SkillStatus } from '@/types'
 
 type ActiveTab = 'skills' | 'learn'
 const TAB_ORDER: ActiveTab[] = ['skills', 'learn']
 
 const STATUS_BADGE = {
-  active:   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  draft:    'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+  active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  draft: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
   archived: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500',
 }
 const STATUS_DOT = {
@@ -25,6 +30,18 @@ const STATUS_DOT = {
 const STATUS_LABELS = { active: 'Ativa', draft: 'Rascunho', archived: 'Arquivada' }
 
 export default function SkillsPage() {
+  const { data: activeOrg } = authClient.useActiveOrganization()
+  const [memberRole, setMemberRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!activeOrg) { setMemberRole(null); return }
+    authClient.organization.getActiveMember().then((r) => {
+      setMemberRole((r?.data as { role?: string } | null)?.role ?? null)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrg?.id])
+
+  const canManage = !activeOrg || memberRole === 'owner' || memberRole === 'admin'
   const [activeTab, setActiveTab] = useState<ActiveTab>('skills')
   const [tabDir, setTabDir] = useState<'left' | 'right'>('right')
 
@@ -113,7 +130,7 @@ export default function SkillsPage() {
   }
 
   const activeCount = skills.filter((s) => s.status === 'active').length
-  const draftCount  = skills.filter((s) => s.status === 'draft').length
+  const draftCount = skills.filter((s) => s.status === 'draft').length
 
   function handleOpenCreateModal(data?: Partial<CreateSkillInput>) {
     setCreateInitialData(data ?? null)
@@ -130,20 +147,19 @@ export default function SkillsPage() {
       {/* ── Header ── */}
       <header className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-semibold text-slate-900 dark:text-slate-100">Skills Platform</span>
+          <div className="flex items-center">
+            <Image src={logoSkillHub} alt="SkillHub" width={128} height={32} className="h-8 w-auto" />
           </div>
           <div className="flex items-center gap-3">
+            <OrgSwitcher onSwitch={fetchSkills} />
             <ThemeToggle />
-            {activeTab === 'skills' && (
+            {activeTab === 'skills' && canManage && (
               <Button size="sm" onClick={() => handleOpenCreateModal()}>
                 <Plus className="h-3.5 w-3.5" />
                 Nova Skill
               </Button>
             )}
+            <UserAvatar />
           </div>
         </div>
       </header>
@@ -161,7 +177,7 @@ export default function SkillsPage() {
           />
           {([
             { id: 'skills', icon: Layers, label: 'Minhas Skills' },
-            { id: 'learn',  icon: BookOpen, label: 'Aprender' },
+            { id: 'learn', icon: BookOpen, label: 'Aprender' },
           ] as const).map(({ id, icon: Icon, label }) => (
             <button
               key={id}
@@ -188,216 +204,221 @@ export default function SkillsPage() {
 
         {/* ── Skills tab ── */}
         {activeTab === 'skills' && (
-        <div key="skills" className={tabDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
-        {/* Page title */}
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Suas Skills
-            </h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Automações configuradas para o Claude.
-            </p>
-          </div>
-          {!loading && skills.length > 0 && (
-            <div className="flex items-center gap-2 text-xs">
-              {activeCount > 0 && (
-                <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  {activeCount} {activeCount === 1 ? 'ativa' : 'ativas'}
-                </span>
-              )}
-              {draftCount > 0 && (
-                <span className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                  {draftCount} {draftCount === 1 ? 'rascunho' : 'rascunhos'}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            {error}
-            <button
-              onClick={fetchSkills}
-              className="ml-auto flex items-center gap-1 underline underline-offset-2 hover:no-underline"
-            >
-              <RefreshCw className="h-3 w-3" /> Tentar novamente
-            </button>
-          </div>
-        )}
-
-        {/* ── Search & filters ── */}
-        {!loading && skills.length > 0 && (
-          <div className="mb-6 space-y-3">
-            {/* Search input */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome ou descrição…"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-primary-950"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+          <div key="skills" className={tabDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
+            {/* Page title */}
+            <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  {activeOrg ? activeOrg.name : 'Suas Skills'}
+                </h1>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {activeOrg
+                    ? `Skills da organização ${activeOrg.name}`
+                    : 'Automações configuradas para o Claude.'}
+                </p>
+              </div>
+              {!loading && skills.length > 0 && (
+                <div className="flex items-center gap-2 text-xs">
+                  {activeCount > 0 && (
+                    <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {activeCount} {activeCount === 1 ? 'ativa' : 'ativas'}
+                    </span>
+                  )}
+                  {draftCount > 0 && (
+                    <span className="flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      {draftCount} {draftCount === 1 ? 'rascunho' : 'rascunhos'}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
-            {/* Filter pills */}
-            <div className="flex flex-wrap items-center gap-2">
-              <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-
-              {/* Status */}
-              {(['all', 'active', 'draft'] as const).map((s) => (
+            {/* Error */}
+            {error && (
+              <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {error}
                 <button
-                  key={s}
-                  onClick={() => setFilterStatus(s)}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                    filterStatus === s
-                      ? s === 'active'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                        : s === 'draft'
-                          ? 'border-slate-400 bg-slate-100 text-slate-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300'
-                          : 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-950 dark:text-primary-300'
-                      : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600',
-                  )}
+                  onClick={fetchSkills}
+                  className="ml-auto flex items-center gap-1 underline underline-offset-2 hover:no-underline"
                 >
-                  {s === 'all' ? (
-                    'Todos'
-                  ) : (
-                    <>
-                      <span className={cn('h-1.5 w-1.5 rounded-full', s === 'active' ? 'bg-emerald-500' : 'bg-slate-400')} />
-                      {s === 'active' ? 'Ativas' : 'Rascunhos'}
-                    </>
-                  )}
+                  <RefreshCw className="h-3 w-3" /> Tentar novamente
                 </button>
-              ))}
+              </div>
+            )}
 
-              {/* Divider */}
-              {presentCategories.length > 0 && (
-                <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+            {/* ── Search & filters ── */}
+            {!loading && skills.length > 0 && (
+              <div className="mb-6 space-y-3">
+                {/* Search input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar por nome ou descrição…"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-primary-950"
+                  />
+                  {search && (
+                    <button
+                      onClick={() => setSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter pills */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+
+                  {/* Status */}
+                  {(['all', 'active', 'draft'] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setFilterStatus(s)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                        filterStatus === s
+                          ? s === 'active'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                            : s === 'draft'
+                              ? 'border-slate-400 bg-slate-100 text-slate-700 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                              : 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                          : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600',
+                      )}
+                    >
+                      {s === 'all' ? (
+                        'Todos'
+                      ) : (
+                        <>
+                          <span className={cn('h-1.5 w-1.5 rounded-full', s === 'active' ? 'bg-emerald-500' : 'bg-slate-400')} />
+                          {s === 'active' ? 'Ativas' : 'Rascunhos'}
+                        </>
+                      )}
+                    </button>
+                  ))}
+
+                  {/* Divider */}
+                  {presentCategories.length > 0 && (
+                    <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+                  )}
+
+                  {/* Category pills */}
+                  {presentCategories.map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      onClick={() => setFilterCategory(filterCategory === value ? '' : value)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                        filterCategory === value
+                          ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-950 dark:text-primary-300'
+                          : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600',
+                      )}
+                    >
+                      <Icon className="h-3 w-3" />
+                      {label}
+                    </button>
+                  ))}
+
+                  {/* Clear */}
+                  {isFiltered && (
+                    <button
+                      onClick={clearFilters}
+                      className="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                    >
+                      <X className="h-3 w-3" />
+                      Limpar
+                    </button>
+                  )}
+                </div>
+
+                {/* Results count when filtered */}
+                {isFiltered && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    {filteredSkills.length === 0
+                      ? 'Nenhuma skill encontrada'
+                      : `${filteredSkills.length} de ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Grid */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {loading
+                ? Array.from({ length: 3 }).map((_, i) => <SkillCardSkeleton key={i} />)
+                : filteredSkills.map((skill) => (
+                  <SkillCard
+                    key={skill.id}
+                    skill={skill}
+                    onView={setViewingSkill}
+                    onDeleteRequest={setPendingDelete}
+                    canManage={canManage}
+                  />
+                ))}
+
+              {/* New skill card — hide when actively filtering or no permission */}
+              {!loading && !isFiltered && canManage && (
+                <button
+                  onClick={() => handleOpenCreateModal()}
+                  className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
+                    <Plus className="h-4 w-4 text-slate-400 transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400" />
+                  </div>
+                  <span className="text-sm font-medium text-slate-400 group-hover:text-primary-600 dark:text-slate-500 dark:group-hover:text-primary-400">
+                    Nova Skill
+                  </span>
+                </button>
               )}
+            </div>
 
-              {/* Category pills */}
-              {presentCategories.map(({ value, label, Icon }) => (
-                <button
-                  key={value}
-                  onClick={() => setFilterCategory(filterCategory === value ? '' : value)}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                    filterCategory === value
-                      ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-950 dark:text-primary-300'
-                      : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600',
-                  )}
-                >
-                  <Icon className="h-3 w-3" />
-                  {label}
-                </button>
-              ))}
-
-              {/* Clear */}
-              {isFiltered && (
+            {/* No results (filters active, but no match) */}
+            {!loading && isFiltered && filteredSkills.length === 0 && (
+              <div className="mt-12 flex flex-col items-center gap-3 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+                  <Search className="h-5 w-5 text-slate-400" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhuma skill encontrada</p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Tente ajustar sua busca ou filtros.
+                  </p>
+                </div>
                 <button
                   onClick={clearFilters}
-                  className="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-400"
                 >
-                  <X className="h-3 w-3" />
-                  Limpar
+                  Limpar filtros
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Results count when filtered */}
-            {isFiltered && (
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                {filteredSkills.length === 0
-                  ? 'Nenhuma skill encontrada'
-                  : `${filteredSkills.length} de ${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`}
-              </p>
+            {/* Empty state (no skills at all) */}
+            {!loading && skills.length === 0 && !error && (
+              <div className="mt-16 flex flex-col items-center gap-4 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-950">
+                  <Sparkles className="h-8 w-8 text-primary-600 dark:text-primary-400" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhuma skill ainda</p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {canManage ? 'Crie sua primeira skill para o Claude usar.' : 'Nenhuma skill foi criada nesta organização ainda.'}
+                  </p>
+                </div>
+                {canManage && (
+                  <Button onClick={() => handleOpenCreateModal()}>
+                    <Plus className="h-4 w-4" /> Criar primeira skill
+                  </Button>
+                )}
+              </div>
             )}
           </div>
-        )}
-
-        {/* Grid */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {loading
-            ? Array.from({ length: 3 }).map((_, i) => <SkillCardSkeleton key={i} />)
-            : filteredSkills.map((skill) => (
-                <SkillCard
-                  key={skill.id}
-                  skill={skill}
-                  onView={setViewingSkill}
-                  onDeleteRequest={setPendingDelete}
-                />
-              ))}
-
-          {/* New skill card — hide when actively filtering */}
-          {!loading && !isFiltered && (
-            <button
-              onClick={() => handleOpenCreateModal()}
-              className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
-            >
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
-                <Plus className="h-4 w-4 text-slate-400 transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400" />
-              </div>
-              <span className="text-sm font-medium text-slate-400 group-hover:text-primary-600 dark:text-slate-500 dark:group-hover:text-primary-400">
-                Nova Skill
-              </span>
-            </button>
-          )}
-        </div>
-
-        {/* No results (filters active, but no match) */}
-        {!loading && isFiltered && filteredSkills.length === 0 && (
-          <div className="mt-12 flex flex-col items-center gap-3 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
-              <Search className="h-5 w-5 text-slate-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhuma skill encontrada</p>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Tente ajustar sua busca ou filtros.
-              </p>
-            </div>
-            <button
-              onClick={clearFilters}
-              className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-400"
-            >
-              Limpar filtros
-            </button>
-          </div>
-        )}
-
-        {/* Empty state (no skills at all) */}
-        {!loading && skills.length === 0 && !error && (
-          <div className="mt-16 flex flex-col items-center gap-4 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-950">
-              <Sparkles className="h-8 w-8 text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhuma skill ainda</p>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Crie sua primeira skill para o Claude usar.
-              </p>
-            </div>
-            <Button onClick={() => handleOpenCreateModal()}>
-              <Plus className="h-4 w-4" /> Criar primeira skill
-            </Button>
-          </div>
-        )}
-        </div>
         )}
       </main>
 
@@ -412,6 +433,7 @@ export default function SkillsPage() {
         onClose={() => setViewingSkill(null)}
         onUpdate={handleUpdate}
         onDelete={handleDelete}
+        canManage={canManage}
       />
       <DeleteConfirmDialog
         skill={pendingDelete}
@@ -429,10 +451,12 @@ function SkillCard({
   skill,
   onView,
   onDeleteRequest,
+  canManage = true,
 }: {
   skill: Skill
   onView: (s: Skill) => void
   onDeleteRequest: (s: Skill) => void
+  canManage?: boolean
 }) {
   const CategoryIcon = getCategoryIcon(skill.category)
 
@@ -491,13 +515,15 @@ function SkillCard({
           >
             <Eye className="h-3.5 w-3.5" />
           </button>
-          <button
-            onClick={() => onDeleteRequest(skill)}
-            className="rounded-md p-1.5 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-red-950/30"
-            title="Excluir skill"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          {canManage && (
+            <button
+              onClick={() => onDeleteRequest(skill)}
+              className="rounded-md p-1.5 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-red-950/30"
+              title="Excluir skill"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </div>

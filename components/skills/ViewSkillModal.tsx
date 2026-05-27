@@ -16,6 +16,7 @@ interface ViewSkillModalProps {
   onClose: () => void
   onUpdate: (id: string, data: Partial<Omit<Skill, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>
   onDelete: (id: string) => void
+  canManage?: boolean
 }
 
 const STATUS_BADGE: Record<SkillStatus, string> = {
@@ -91,7 +92,7 @@ function groupFiles(files: SkillFile[]) {
   return { root, folders }
 }
 
-export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete }: ViewSkillModalProps) {
+export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, canManage = true }: ViewSkillModalProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [form, setForm] = useState<EditForm>({ name: '', description: '', category: '', status: 'draft' })
   const [files, setFiles] = useState<SkillFile[]>([])
@@ -540,7 +541,9 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete }: V
                     <div key={folder} className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
                       <button
                         onClick={() => setExpandedFolders((prev) => {
-                          const next = new Set(prev); next.has(folder) ? next.delete(folder) : next.add(folder); return next
+                          const next = new Set(prev)
+                          if (next.has(folder)) { next.delete(folder) } else { next.add(folder) }
+                          return next
                         })}
                         className="flex w-full cursor-pointer items-center gap-2 bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 dark:bg-slate-800/50 dark:text-slate-400 dark:hover:bg-slate-800"
                       >
@@ -579,28 +582,34 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete }: V
 
         {/* ── Footer ── */}
         <div className="flex shrink-0 items-center justify-between border-t border-slate-100 bg-white px-4 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
-          <button
-            onClick={handleDelete}
-            onBlur={() => setDeleteConfirm(false)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-150',
-              deleteConfirm
-                ? 'bg-red-500 text-white shadow-sm hover:bg-red-600'
-                : 'text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30',
+          <div>
+            {canManage && (
+              <button
+                onClick={handleDelete}
+                onBlur={() => setDeleteConfirm(false)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-150',
+                  deleteConfirm
+                    ? 'bg-red-500 text-white shadow-sm hover:bg-red-600'
+                    : 'text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30',
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {deleteConfirm ? 'Confirmar?' : 'Excluir'}
+              </button>
             )}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {deleteConfirm ? 'Confirmar?' : 'Excluir'}
-          </button>
+          </div>
 
           {mode === 'view' ? (
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={handleDownload}>
                 <Download className="h-3.5 w-3.5" /> Download
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setMode('edit')}>
-                <Pencil className="h-3.5 w-3.5" /> Editar
-              </Button>
+              {canManage && (
+                <Button size="sm" variant="secondary" onClick={() => setMode('edit')}>
+                  <Pencil className="h-3.5 w-3.5" /> Editar
+                </Button>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2">

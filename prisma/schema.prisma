@@ -7,6 +7,114 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── BetterAuth core models ────────────────────────────────────────────────────
+
+model user {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions      session[]
+  accounts      account[]
+  members       member[]
+  skills        Skill[]
+}
+
+model session {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId               String  @db.ObjectId
+  user                 user    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeOrganizationId String? @db.ObjectId
+}
+
+model account {
+  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
+  accountId             String
+  providerId            String
+  userId                String    @db.ObjectId
+  user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model verification {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+// ── Organizations plugin models ───────────────────────────────────────────────
+
+model organization {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  slug      String   @unique
+  logo      String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  members     member[]
+  invitations invitation[]
+  inviteLinks InviteLink[]
+  skills      Skill[]
+}
+
+model InviteLink {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  token          String       @unique
+  organizationId String       @db.ObjectId
+  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdBy      String       @db.ObjectId
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+}
+
+model member {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String       @db.ObjectId
+  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String       @db.ObjectId
+  user           user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime     @default(now())
+}
+
+model invitation {
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String       @db.ObjectId
+  organization   organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime
+  inviterId      String       @db.ObjectId
+  createdAt      DateTime     @default(now())
+}
+
+// ── Skill (atualizado com ownership) ─────────────────────────────────────────
+
 type SkillFile {
   id      String
   name    String
@@ -16,12 +124,17 @@ type SkillFile {
 model Skill {
   id          String      @id @default(auto()) @map("_id") @db.ObjectId
   name        String
-  description String @default("")
+  description String      @default("")
   category    String      @default("")
   status      SkillStatus @default(draft)
   files       SkillFile[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+
+  userId         String?       @db.ObjectId
+  user           user?         @relation(fields: [userId], references: [id])
+  organizationId String?       @db.ObjectId
+  organization   organization? @relation(fields: [organizationId], references: [id])
 }
 
 enum SkillStatus {
