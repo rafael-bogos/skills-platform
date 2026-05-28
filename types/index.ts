@@ -23,6 +23,7 @@ export interface Skill {
   name: string
   description: string
   category: string
+  tags: string[]
   status: SkillStatus
   files: SkillFile[]
   createdAt: string
@@ -52,6 +53,7 @@ export interface CreateSkillInput {
   name: string
   description?: string
   category: string
+  tags?: string[]
   status: SkillStatus
   files: SkillFile[]
 }

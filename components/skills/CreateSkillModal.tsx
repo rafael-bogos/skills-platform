@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Sparkles, X, FileText, FolderOpen, ChevronRight, Plus, ArrowLeft, Trash2,
+  Sparkles, X, FileText, FolderOpen, ChevronRight, Plus, ArrowLeft, Trash2, Tag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Button from '@/components/ui/Button'
@@ -17,6 +17,7 @@ function emptyForm(): CreateSkillInput {
     name: '',
     description: '',
     category: '',
+    tags: [],
     status: 'draft',
     files: [{ id: crypto.randomUUID(), name: 'SKILL.md', content: '' }],
   }
@@ -123,6 +124,19 @@ export default function CreateSkillModal({ open, onClose, onSubmit, initialData 
   function setMeta(key: 'name' | 'description' | 'category' | 'status', value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
     if (key === 'name') setErrors((prev) => ({ ...prev, name: undefined }))
+  }
+
+  function addTag(raw: string) {
+    const tag = raw.trim().toLowerCase().replace(/[,;]+$/, '').trim()
+    if (!tag) return
+    setForm((prev) => ({
+      ...prev,
+      tags: prev.tags?.includes(tag) ? prev.tags : [...(prev.tags ?? []), tag],
+    }))
+  }
+
+  function removeTag(tag: string) {
+    setForm((prev) => ({ ...prev, tags: prev.tags?.filter((t) => t !== tag) ?? [] }))
   }
 
   function updateFileContent(id: string, content: string) {
@@ -288,6 +302,16 @@ export default function CreateSkillModal({ open, onClose, onSubmit, initialData 
                   placeholder="ex: Use esta skill sempre que o usuário pedir para criar componentes React..."
                   className={inputCn(false) + ' resize-none'}
                 />
+              </div>
+
+              {/* Tags */}
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <Tag className="h-3 w-3" />
+                  Tags
+                  <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
+                </label>
+                <TagsInput tags={form.tags ?? []} onAdd={addTag} onRemove={removeTag} />
               </div>
 
               {/* Categoria + Status */}
@@ -604,5 +628,59 @@ function inputCn(hasError: boolean) {
     hasError
       ? 'border-red-300 focus:border-red-400 focus:ring-red-200 dark:border-red-700'
       : 'border-slate-200 focus:border-primary-500 focus:ring-primary-100 dark:border-slate-700 dark:focus:border-primary-500 dark:focus:ring-primary-950',
+  )
+}
+
+export function TagsInput({
+  tags,
+  onAdd,
+  onRemove,
+}: {
+  tags: string[]
+  onAdd: (tag: string) => void
+  onRemove: (tag: string) => void
+}) {
+  const [input, setInput] = useState('')
+
+  function commit(raw: string) {
+    const parts = raw.split(/[,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)
+    parts.forEach(onAdd)
+    setInput('')
+  }
+
+  return (
+    <div className="flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 transition-colors focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-primary-500 dark:focus-within:ring-primary-950">
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-950 dark:text-primary-300"
+        >
+          #{tag}
+          <button
+            type="button"
+            onClick={() => onRemove(tag)}
+            className="rounded-full text-primary-400 hover:text-primary-700 dark:hover:text-primary-200"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={input}
+        onChange={(e) => {
+          const val = e.target.value
+          if (val.includes(',') || val.includes(';')) { commit(val); return }
+          setInput(val)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(input) }
+          if (e.key === 'Backspace' && !input && tags.length > 0) onRemove(tags[tags.length - 1])
+        }}
+        onBlur={() => { if (input.trim()) commit(input) }}
+        placeholder={tags.length === 0 ? 'ex: frontend, revisão…' : ''}
+        className="min-w-[120px] flex-1 bg-transparent text-xs text-slate-900 placeholder-slate-400 focus:outline-none dark:text-slate-100 dark:placeholder-slate-500"
+      />
+    </div>
   )
 }

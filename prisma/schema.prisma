@@ -126,6 +126,7 @@ model Skill {
   name        String
   description String      @default("")
   category    String      @default("")
+  tags        String[]    @default([])
   status      SkillStatus @default(draft)
   files       SkillFile[]
   createdAt   DateTime    @default(now())

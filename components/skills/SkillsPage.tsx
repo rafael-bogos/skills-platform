@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
-import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen } from 'lucide-react'
+import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen, Tag } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import { UserAvatar } from '@/components/ui/UserAvatar'
@@ -60,27 +60,36 @@ export default function SkillsPage() {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<SkillStatus | 'all'>('all')
   const [filterCategory, setFilterCategory] = useState('')
+  const [filterTag, setFilterTag] = useState('')
 
   const filteredSkills = useMemo(() => {
     const q = search.trim().toLowerCase()
     return skills.filter((s) => {
       if (filterStatus !== 'all' && s.status !== filterStatus) return false
       if (filterCategory && s.category !== filterCategory) return false
+      if (filterTag && !(s.tags ?? []).includes(filterTag)) return false
       if (q && !s.name.toLowerCase().includes(q) && !s.description.toLowerCase().includes(q)) return false
       return true
     })
-  }, [skills, search, filterStatus, filterCategory])
+  }, [skills, search, filterStatus, filterCategory, filterTag])
 
-  const isFiltered = search !== '' || filterStatus !== 'all' || filterCategory !== ''
+  const isFiltered = search !== '' || filterStatus !== 'all' || filterCategory !== '' || filterTag !== ''
   const presentCategories = useMemo(
     () => CATEGORIES.filter((c) => skills.some((s) => s.category === c.value)),
     [skills],
   )
 
+  const presentTags = useMemo(() => {
+    const set = new Set<string>()
+    skills.forEach((s) => (s.tags ?? []).forEach((t) => set.add(t)))
+    return [...set].sort()
+  }, [skills])
+
   function clearFilters() {
     setSearch('')
     setFilterStatus('all')
     setFilterCategory('')
+    setFilterTag('')
   }
 
   const fetchSkills = useCallback(async () => {
@@ -325,6 +334,26 @@ export default function SkillsPage() {
                     </button>
                   ))}
 
+                  {/* Tag pills */}
+                  {presentTags.length > 0 && (
+                    <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+                  )}
+                  {presentTags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => setFilterTag(filterTag === tag ? '' : tag)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                        filterTag === tag
+                          ? 'border-violet-500 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-300'
+                          : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600',
+                      )}
+                    >
+                      <Tag className="h-3 w-3" />
+                      #{tag}
+                    </button>
+                  ))}
+
                   {/* Clear */}
                   {isFiltered && (
                     <button
@@ -490,6 +519,22 @@ function SkillCard({
       <p className="mt-3 line-clamp-2 flex-1 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
         {skill.description || <span className="italic">Sem descrição</span>}
       </p>
+
+      {/* Tags */}
+      {skill.tags && skill.tags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {skill.tags.slice(0, 3).map((tag) => (
+            <span key={tag} className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+              #{tag}
+            </span>
+          ))}
+          {skill.tags.length > 3 && (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-400 dark:bg-slate-800">
+              +{skill.tags.length - 3}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Footer */}
       <div className="mt-4 flex items-center justify-between">

@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import {
   X, Pencil, Check, Trash2, CalendarDays, RefreshCw,
-  FileText, FolderOpen, Plus, ChevronDown, ChevronRight, ArrowLeft, Copy, Download,
+  FileText, FolderOpen, Plus, ChevronDown, ChevronRight, ArrowLeft, Copy, Download, Tag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Button from '@/components/ui/Button'
 import CategorySelect, { getCategoryIcon } from '@/components/skills/CategorySelect'
 import { CodeEditorField } from '@/components/skills/CodeEditorField'
+import { TagsInput } from '@/components/skills/CreateSkillModal'
 import type { Skill, SkillFile, SkillStatus } from '@/types'
 
 interface ViewSkillModalProps {
@@ -45,7 +46,7 @@ function formatDate(dateStr: string) {
   return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-type EditForm = { name: string; description: string; category: string; status: SkillStatus }
+type EditForm = { name: string; description: string; category: string; tags: string[]; status: SkillStatus }
 
 type DirItem = { kind: 'file'; name: string; file: SkillFile } | { kind: 'folder'; name: string }
 
@@ -95,7 +96,7 @@ function groupFiles(files: SkillFile[]) {
 
 export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, canManage = true }: ViewSkillModalProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view')
-  const [form, setForm] = useState<EditForm>({ name: '', description: '', category: '', status: 'draft' })
+  const [form, setForm] = useState<EditForm>({ name: '', description: '', category: '', tags: [], status: 'draft' })
   const [files, setFiles] = useState<SkillFile[]>([])
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -113,7 +114,7 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
 
   useEffect(() => {
     if (skill) {
-      setForm({ name: skill.name, description: skill.description, category: skill.category, status: skill.status })
+      setForm({ name: skill.name, description: skill.description, category: skill.category, tags: skill.tags ?? [], status: skill.status })
       setFiles(skill.files ?? [])
       setMode('view')
       setDeleteConfirm(false)
@@ -193,7 +194,7 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
 
   function handleCancel() {
     if (!skill) return
-    setForm({ name: skill.name, description: skill.description, category: skill.category, status: skill.status })
+    setForm({ name: skill.name, description: skill.description, category: skill.category, tags: skill.tags ?? [], status: skill.status })
     setFiles(skill.files ?? [])
     setEditPath('')
     setEmptyFolders(new Set())
@@ -290,6 +291,15 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
                   {files.length} {files.length === 1 ? 'arquivo' : 'arquivos'}
                 </span>
               </div>
+              {skill.tags && skill.tags.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {skill.tags.map((tag) => (
+                    <span key={tag} className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70 ring-1 ring-white/15">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -335,6 +345,18 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
                     Descrição <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
                   </label>
                   <textarea rows={3} value={form.description} onChange={(e) => setField('description', e.target.value)} className={inputCn + ' resize-none'} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                    <Tag className="h-3 w-3" />
+                    Tags
+                    <span className="font-normal text-slate-400 dark:text-slate-500">(opcional)</span>
+                  </label>
+                  <TagsInput
+                    tags={form.tags}
+                    onAdd={(tag) => setForm((prev) => ({ ...prev, tags: prev.tags.includes(tag) ? prev.tags : [...prev.tags, tag] }))}
+                    onRemove={(tag) => setForm((prev) => ({ ...prev, tags: prev.tags.filter((t) => t !== tag) }))}
+                  />
                 </div>
                 <div className="flex flex-col gap-4">
                   <div className="space-y-1.5">
