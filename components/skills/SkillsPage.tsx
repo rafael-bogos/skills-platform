@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
-import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen, Tag } from 'lucide-react'
+import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen, Tag, ShieldCheck } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import { UserAvatar } from '@/components/ui/UserAvatar'
 import CreateSkillModal from '@/components/skills/CreateSkillModal'
 import ViewSkillModal from '@/components/skills/ViewSkillModal'
 import LearnTab from '@/components/skills/LearnTab'
+import AdminTab from '@/components/admin/AdminTab'
 import { OrgSwitcher } from '@/components/skills/OrgSwitcher'
 import { CATEGORIES, getCategoryIcon } from '@/components/skills/CategorySelect'
 import { cn } from '@/lib/utils'
@@ -16,8 +17,7 @@ import { authClient } from '@/lib/auth-client'
 import logoSkillHub from '@/public/logo-skillhub.png'
 import type { CreateSkillInput, Skill, SkillStatus } from '@/types'
 
-type ActiveTab = 'skills' | 'learn'
-const TAB_ORDER: ActiveTab[] = ['skills', 'learn']
+type ActiveTab = 'skills' | 'admin' | 'learn'
 
 const STATUS_BADGE = {
   active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -42,11 +42,23 @@ export default function SkillsPage() {
   }, [activeOrg?.id])
 
   const canManage = !activeOrg || memberRole === 'owner' || memberRole === 'admin'
+  const isAdmin = activeOrg && (memberRole === 'owner' || memberRole === 'admin')
+
+  const tabOrder = useMemo<ActiveTab[]>(
+    () => (isAdmin ? ['skills', 'admin', 'learn'] : ['skills', 'learn']),
+    [isAdmin],
+  )
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('skills')
   const [tabDir, setTabDir] = useState<'left' | 'right'>('right')
 
+  // Reset to skills if admin tab becomes unavailable
+  useEffect(() => {
+    if (activeTab === 'admin' && !isAdmin) setActiveTab('skills')
+  }, [isAdmin, activeTab])
+
   function changeTab(next: ActiveTab) {
-    setTabDir(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(activeTab) ? 'right' : 'left')
+    setTabDir(tabOrder.indexOf(next) > tabOrder.indexOf(activeTab) ? 'right' : 'left')
     setActiveTab(next)
   }
   const [skills, setSkills] = useState<Skill[]>([])
@@ -154,16 +166,16 @@ export default function SkillsPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
       {/* ── Header ── */}
-      <header className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <div className="flex items-center">
-            <Image src={logoSkillHub} alt="SkillHub" width={128} height={32} className="h-8 w-auto" />
+      <header className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
+          <div className="shrink-0">
+            <Image src={logoSkillHub} alt="SkillHub" width={128} height={32} className="h-7 w-auto sm:h-8" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
             <OrgSwitcher onSwitch={fetchSkills} />
             <ThemeToggle />
             {activeTab === 'skills' && canManage && (
-              <Button size="sm" onClick={() => handleOpenCreateModal()}>
+              <Button size="sm" className="hidden sm:flex" onClick={() => handleOpenCreateModal()}>
                 <Plus className="h-3.5 w-3.5" />
                 Nova Skill
               </Button>
@@ -177,32 +189,51 @@ export default function SkillsPage() {
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
 
         {/* ── Tab navigation ── */}
-        <div className="relative mb-8 flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900/70">
-          {/* Sliding pill indicator */}
-          <div
-            aria-hidden
-            className="absolute inset-y-1 left-1 w-[calc(50%-6px)] rounded-lg bg-primary-600 shadow-md transition-transform duration-200 ease-out dark:bg-primary-500"
-            style={{ transform: activeTab === 'learn' ? 'translateX(calc(100% + 4px))' : 'translateX(0)' }}
-          />
-          {([
-            { id: 'skills', icon: Layers, label: 'Minhas Skills' },
-            { id: 'learn', icon: BookOpen, label: 'Aprender' },
-          ] as const).map(({ id, icon: Icon, label }) => (
-            <button
-              key={id}
-              onClick={() => changeTab(id)}
-              className={cn(
-                'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150',
-                activeTab === id
-                  ? 'text-white'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200',
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </div>
+        {(() => {
+          const allTabs = [
+            { id: 'skills' as const, icon: Layers, label: 'Minhas Skills' },
+            { id: 'admin' as const, icon: ShieldCheck, label: 'Admin' },
+            { id: 'learn' as const, icon: BookOpen, label: 'Aprender' },
+          ].filter((t) => tabOrder.includes(t.id))
+
+          const n = allTabs.length
+          const idx = allTabs.findIndex((t) => t.id === activeTab)
+
+          return (
+            <div className="relative mb-8 flex gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900/70">
+              <div
+                aria-hidden
+                className="absolute inset-y-1 left-1 rounded-lg bg-primary-600 shadow-md transition-all duration-200 ease-out dark:bg-primary-500"
+                style={{
+                  width: `calc(${100 / n}% - ${(8 + (n - 1) * 4) / n}px)`,
+                  transform: `translateX(calc(${idx} * (100% + 4px)))`,
+                }}
+              />
+              {allTabs.map(({ id, icon: Icon, label }) => (
+                <button
+                  key={id}
+                  onClick={() => changeTab(id)}
+                  className={cn(
+                    'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors duration-150 sm:gap-2 sm:px-4 sm:text-sm',
+                    activeTab === id
+                      ? 'text-white'
+                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200',
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
+
+        {/* ── Admin tab ── */}
+        {activeTab === 'admin' && (
+          <div key="admin" className={tabDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
+            <AdminTab />
+          </div>
+        )}
 
         {/* ── Learn tab ── */}
         {activeTab === 'learn' && (
