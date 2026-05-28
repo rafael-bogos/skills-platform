@@ -166,16 +166,16 @@ export default function SkillsPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
       {/* ── Header ── */}
-      <header className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <div className="flex items-center">
-            <Image src={logoSkillHub} alt="SkillHub" width={128} height={32} className="h-8 w-auto" />
+      <header className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
+          <div className="shrink-0">
+            <Image src={logoSkillHub} alt="SkillHub" width={128} height={32} className="h-7 w-auto sm:h-8" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
             <OrgSwitcher onSwitch={fetchSkills} />
             <ThemeToggle />
             {activeTab === 'skills' && canManage && (
-              <Button size="sm" onClick={() => handleOpenCreateModal()}>
+              <Button size="sm" className="hidden sm:flex" onClick={() => handleOpenCreateModal()}>
                 <Plus className="h-3.5 w-3.5" />
                 Nova Skill
               </Button>
@@ -214,7 +214,7 @@ export default function SkillsPage() {
                   key={id}
                   onClick={() => changeTab(id)}
                   className={cn(
-                    'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150',
+                    'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors duration-150 sm:gap-2 sm:px-4 sm:text-sm',
                     activeTab === id
                       ? 'text-white'
                       : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200',
