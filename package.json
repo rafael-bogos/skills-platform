@@ -12,6 +12,7 @@
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "@types/jszip": "^3.4.0",
+    "@uiw/react-textarea-code-editor": "^3.1.1",
     "better-auth": "^1.6.11",
     "clsx": "^2.1.1",
     "jszip": "^3.10.1",

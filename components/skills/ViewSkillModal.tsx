@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 import Button from '@/components/ui/Button'
 import CategorySelect, { getCategoryIcon } from '@/components/skills/CategorySelect'
+import { CodeEditorField } from '@/components/skills/CodeEditorField'
 import type { Skill, SkillFile, SkillStatus } from '@/types'
 
 interface ViewSkillModalProps {
@@ -246,8 +247,8 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl transition-all duration-200',
-          'max-h-[88vh]',
+          'relative z-10 flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl shadow-2xl transition-all duration-200',
+          'max-h-[92vh]',
           visible ? 'scale-100 translate-y-0 opacity-100' : 'scale-95 translate-y-2 opacity-0',
         )}
       >
@@ -698,17 +699,22 @@ function FileRow({
       {expanded && (
         <div className="px-3 pb-3">
           {editing ? (
-            <textarea
-              rows={10}
+            <CodeEditorField
+              filename={file.name}
               value={file.content}
-              onChange={(e) => onContentChange(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:focus:ring-primary-950"
+              onChange={onContentChange}
+              rows={10}
               autoFocus
+              expandable
             />
           ) : (
-            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs leading-relaxed text-slate-600 dark:bg-slate-800/60 dark:text-slate-400">
-              {file.content || <span className="italic text-slate-400">Arquivo vazio</span>}
-            </pre>
+            <CodeEditorField
+              filename={file.name}
+              value={file.content || ''}
+              readOnly
+              rows={6}
+              expandable
+            />
           )}
         </div>
       )}

@@ -7,6 +7,7 @@ import {
 import { cn } from '@/lib/utils'
 import Button from '@/components/ui/Button'
 import CategorySelect from '@/components/skills/CategorySelect'
+import { CodeEditorField } from '@/components/skills/CodeEditorField'
 import type { CreateSkillInput, SkillFile, SkillStatus } from '@/types'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -557,13 +558,13 @@ export default function CreateSkillModal({ open, onClose, onSubmit, initialData 
               {/* ── File editor ── */}
               {view.mode === 'edit' && (
                 <div className="px-4 py-4">
-                  <textarea
-                    rows={14}
+                  <CodeEditorField
+                    filename={view.file.name}
                     value={view.file.content}
-                    onChange={(e) => updateFileContent(view.file.id, e.target.value)}
-                    placeholder="Conteúdo em markdown..."
+                    onChange={(v) => updateFileContent(view.file.id, v)}
+                    rows={14}
                     autoFocus
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-xs text-slate-800 placeholder-slate-300 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:placeholder-slate-600 dark:focus:ring-primary-950"
+                    expandable
                   />
                   {view.file.name !== 'SKILL.md' && (
                     <button
