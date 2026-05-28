@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
+import { logActivity } from '@/lib/activity-logger'
 import type { SkillStatus } from '@prisma/client'
 
 export async function GET() {
@@ -63,6 +64,16 @@ export async function POST(req: NextRequest) {
         userId: activeOrgId ? null : session.user.id,
         organizationId: activeOrgId,
       },
+    })
+
+    void logActivity({
+      userId: session.user.id,
+      userEmail: session.user.email,
+      userName: session.user.name,
+      organizationId: activeOrgId,
+      action: (status as string) === 'active' ? 'SKILL_PUBLISHED' : 'SKILL_CREATED',
+      entityId: skill.id,
+      entityName: skill.name,
     })
 
     return NextResponse.json(skill, { status: 201 })

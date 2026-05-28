@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
+import { logActivity } from '@/lib/activity-logger'
 import type { SkillStatus } from '@prisma/client'
 
 type Params = { params: Promise<{ id: string }> }
@@ -76,6 +77,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       },
     })
 
+    const action =
+      body.status === 'active' && existing.status !== 'active'
+        ? 'SKILL_PUBLISHED' as const
+        : body.status === 'archived'
+          ? 'SKILL_ARCHIVED' as const
+          : 'SKILL_UPDATED' as const
+
+    void logActivity({
+      userId: session.user.id,
+      userEmail: session.user.email,
+      userName: session.user.name,
+      organizationId: activeOrgId,
+      action,
+      entityId: id,
+      entityName: skill.name,
+      metadata: { changes: Object.keys(body).filter((k) => body[k] !== undefined) },
+    })
+
     return NextResponse.json(skill)
   } catch (err: unknown) {
     const isNotFound =
@@ -99,6 +118,17 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     if (memberRole === 'member') return NextResponse.json({ error: 'Membros não podem excluir skills' }, { status: 403 })
 
     await prisma.skill.delete({ where: { id } })
+
+    void logActivity({
+      userId: session.user.id,
+      userEmail: session.user.email,
+      userName: session.user.name,
+      organizationId: activeOrgId,
+      action: 'SKILL_DELETED',
+      entityId: id,
+      entityName: existing.name,
+    })
+
     return new NextResponse(null, { status: 204 })
   } catch (err: unknown) {
     const isNotFound =
