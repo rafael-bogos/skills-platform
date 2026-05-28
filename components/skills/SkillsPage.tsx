@@ -343,14 +343,14 @@ export default function SkillsPage() {
                       key={tag}
                       onClick={() => setFilterTag(filterTag === tag ? '' : tag)}
                       className={cn(
-                        'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                        'flex max-w-[140px] items-center gap-1.5 overflow-hidden rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                         filterTag === tag
                           ? 'border-violet-500 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-300'
                           : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600',
                       )}
                     >
-                      <Tag className="h-3 w-3" />
-                      #{tag}
+                      <Tag className="h-3 w-3 shrink-0" />
+                      <span className="min-w-0 truncate">#{tag}</span>
                     </button>
                   ))}
 
@@ -524,8 +524,8 @@ function SkillCard({
       {skill.tags && skill.tags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {skill.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
-              #{tag}
+            <span key={tag} className="flex max-w-[120px] overflow-hidden rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600 dark:bg-violet-950/40 dark:text-violet-400">
+              <span className="min-w-0 truncate">#{tag}</span>
             </span>
           ))}
           {skill.tags.length > 3 && (

@@ -649,17 +649,17 @@ export function TagsInput({
   }
 
   return (
-    <div className="flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 transition-colors focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-primary-500 dark:focus-within:ring-primary-950">
+    <div className="max-h-[80px] overflow-y-auto flex flex-wrap items-start gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 transition-colors focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-100 dark:border-slate-700 dark:bg-slate-800 dark:focus-within:border-primary-500 dark:focus-within:ring-primary-950">
       {tags.map((tag) => (
         <span
           key={tag}
-          className="flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-950 dark:text-primary-300"
+          className="flex max-w-[150px] shrink-0 overflow-hidden items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-950 dark:text-primary-300"
         >
-          #{tag}
+          <span className="min-w-0 truncate">#{tag}</span>
           <button
             type="button"
             onClick={() => onRemove(tag)}
-            className="rounded-full text-primary-400 hover:text-primary-700 dark:hover:text-primary-200"
+            className="shrink-0 rounded-full text-primary-400 hover:text-primary-700 dark:hover:text-primary-200"
           >
             <X className="h-2.5 w-2.5" />
           </button>
@@ -679,7 +679,7 @@ export function TagsInput({
         }}
         onBlur={() => { if (input.trim()) commit(input) }}
         placeholder={tags.length === 0 ? 'ex: frontend, revisão…' : ''}
-        className="min-w-[120px] flex-1 bg-transparent text-xs text-slate-900 placeholder-slate-400 focus:outline-none dark:text-slate-100 dark:placeholder-slate-500"
+        className="min-w-[100px] flex-1 bg-transparent text-xs text-slate-900 placeholder-slate-400 focus:outline-none dark:text-slate-100 dark:placeholder-slate-500"
       />
     </div>
   )

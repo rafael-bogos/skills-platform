@@ -294,8 +294,8 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
               {skill.tags && skill.tags.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {skill.tags.map((tag) => (
-                    <span key={tag} className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70 ring-1 ring-white/15">
-                      #{tag}
+                    <span key={tag} className="flex max-w-[160px] overflow-hidden rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70 ring-1 ring-white/15">
+                      <span className="min-w-0 truncate">#{tag}</span>
                     </span>
                   ))}
                 </div>
