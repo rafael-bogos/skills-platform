@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import {
   X, Pencil, Check, Trash2, CalendarDays, RefreshCw,
-  FileText, FolderOpen, Plus, ChevronDown, ChevronRight, ArrowLeft, Copy, Download, Tag,
+  FileText, FolderOpen, Plus, ChevronDown, ChevronRight, ArrowLeft, Copy, Download, Tag, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Button from '@/components/ui/Button'
@@ -638,7 +638,9 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={handleCancel}>Cancelar</Button>
               <Button size="sm" onClick={handleSave} disabled={saving}>
-                <Check className="h-3.5 w-3.5" />
+                {saving
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Check className="h-3.5 w-3.5" />}
                 {saving ? 'Salvando…' : 'Salvar'}
               </Button>
             </div>

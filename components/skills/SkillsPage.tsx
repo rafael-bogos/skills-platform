@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
-import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen, Tag, ShieldCheck } from 'lucide-react'
+import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen, Tag, ShieldCheck, Upload } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import { UserAvatar } from '@/components/ui/UserAvatar'
@@ -68,6 +68,9 @@ export default function SkillsPage() {
   const [createInitialData, setCreateInitialData] = useState<Partial<CreateSkillInput> | null>(null)
   const [viewingSkill, setViewingSkill] = useState<Skill | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Skill | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
+
 
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<SkillStatus | 'all'>('all')
@@ -163,6 +166,69 @@ export default function SkillsPage() {
     setCreateInitialData(null)
   }
 
+  function handleImportClick() {
+    const input = importInputRef.current
+    if (!input) return
+    input.setAttribute('webkitdirectory', '')
+    input.click()
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const fileList = Array.from(e.target.files ?? [])
+    if (fileList.length === 0) return
+    e.target.value = ''
+
+    const folderName = fileList[0].webkitRelativePath.split('/')[0]
+    const IGNORED = /^(node_modules|\.git)(\/|$)/
+
+    const relevant = fileList.filter((f) => {
+      const rel = f.webkitRelativePath.slice(folderName.length + 1)
+      return rel && !IGNORED.test(rel) && !rel.endsWith('.DS_Store')
+    })
+
+    const reads = relevant.map(
+      (file) =>
+        new Promise<{ path: string; content: string }>((resolve) => {
+          const rel = file.webkitRelativePath.slice(folderName.length + 1)
+          const reader = new FileReader()
+          reader.onload = (ev) => resolve({ path: rel, content: String(ev.target?.result ?? '') })
+          reader.onerror = () => resolve({ path: rel, content: '' })
+          reader.readAsText(file)
+        }),
+    )
+
+    Promise.all(reads).then((results) => {
+      const metaResult = results.find((r) => r.path === 'skill.json')
+      let meta: Partial<CreateSkillInput> = { name: folderName, status: 'draft' }
+
+      if (metaResult) {
+        try {
+          const parsed = JSON.parse(metaResult.content)
+          meta = {
+            name: parsed.name ?? folderName,
+            description: parsed.description ?? '',
+            category: parsed.category ?? '',
+            tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+            status: parsed.status === 'active' || parsed.status === 'archived' ? parsed.status : 'draft',
+          }
+        } catch { /* keep defaults */ }
+      }
+
+      const skillFiles = results
+        .filter((r) => r.path !== 'skill.json')
+        .map((r) => ({ id: crypto.randomUUID(), name: r.path, content: r.content }))
+
+      if (skillFiles.length === 0) {
+        skillFiles.push({ id: crypto.randomUUID(), name: 'SKILL.md', content: '' })
+      }
+
+      handleOpenCreateModal({ ...meta, files: skillFiles })
+    }).catch(() => {
+      setImportError('Erro ao ler a pasta. Tente novamente.')
+      setTimeout(() => setImportError(null), 4000)
+    })
+  }
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
       {/* ── Header ── */}
@@ -175,10 +241,22 @@ export default function SkillsPage() {
             <OrgSwitcher onSwitch={fetchSkills} />
             <ThemeToggle />
             {activeTab === 'skills' && canManage && (
-              <Button size="sm" className="hidden sm:flex" onClick={() => handleOpenCreateModal()}>
-                <Plus className="h-3.5 w-3.5" />
-                Nova Skill
-              </Button>
+              <>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+                <Button size="sm" variant="ghost" className="hidden sm:flex" onClick={handleImportClick}>
+                  <Upload className="h-3.5 w-3.5" />
+                  Importar
+                </Button>
+                <Button size="sm" className="hidden sm:flex" onClick={() => handleOpenCreateModal()}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Nova Skill
+                </Button>
+              </>
             )}
             <UserAvatar />
           </div>
@@ -274,6 +352,17 @@ export default function SkillsPage() {
                 </div>
               )}
             </div>
+
+            {/* Import error */}
+            {importError && (
+              <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {importError}
+                <button onClick={() => setImportError(null)} className="ml-auto rounded p-0.5 hover:text-amber-900 dark:hover:text-amber-200">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
@@ -424,17 +513,30 @@ export default function SkillsPage() {
 
               {/* New skill card — hide when actively filtering or no permission */}
               {!loading && !isFiltered && canManage && (
-                <button
-                  onClick={() => handleOpenCreateModal()}
-                  className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
-                    <Plus className="h-4 w-4 text-slate-400 transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-400 group-hover:text-primary-600 dark:text-slate-500 dark:group-hover:text-primary-400">
-                    Nova Skill
-                  </span>
-                </button>
+                <>
+                  <button
+                    onClick={() => handleOpenCreateModal()}
+                    className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
+                      <Plus className="h-4 w-4 text-slate-400 transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400" />
+                    </div>
+                    <span className="text-sm font-medium text-slate-400 group-hover:text-primary-600 dark:text-slate-500 dark:group-hover:text-primary-400">
+                      Nova Skill
+                    </span>
+                  </button>
+                  <button
+                    onClick={handleImportClick}
+                    className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-violet-400 hover:bg-violet-50 dark:border-slate-800 dark:hover:border-violet-700 dark:hover:bg-violet-950/20"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-violet-100 dark:bg-slate-800 dark:group-hover:bg-violet-950">
+                      <Upload className="h-4 w-4 text-slate-400 transition-colors group-hover:text-violet-600 dark:group-hover:text-violet-400" />
+                    </div>
+                    <span className="text-sm font-medium text-slate-400 group-hover:text-violet-600 dark:text-slate-500 dark:group-hover:text-violet-400">
+                      Importar Skill
+                    </span>
+                  </button>
+                </>
               )}
             </div>
 
@@ -472,9 +574,14 @@ export default function SkillsPage() {
                   </p>
                 </div>
                 {canManage && (
-                  <Button onClick={() => handleOpenCreateModal()}>
-                    <Plus className="h-4 w-4" /> Criar primeira skill
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => handleOpenCreateModal()}>
+                      <Plus className="h-4 w-4" /> Criar primeira skill
+                    </Button>
+                    <Button variant="ghost" onClick={handleImportClick}>
+                      <Upload className="h-4 w-4" /> Importar
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

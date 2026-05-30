@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Sparkles, X, FileText, FolderOpen, ChevronRight, Plus, ArrowLeft, Trash2, Tag,
+  Sparkles, X, FileText, FolderOpen, ChevronRight, Plus, ArrowLeft, Trash2, Tag, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Button from '@/components/ui/Button'
@@ -70,13 +70,14 @@ type RepoView =
 interface CreateSkillModalProps {
   open: boolean
   onClose: () => void
-  onSubmit: (skill: CreateSkillInput) => void
+  onSubmit: (skill: CreateSkillInput) => Promise<void>
   initialData?: Partial<CreateSkillInput> | null
 }
 
 export default function CreateSkillModal({ open, onClose, onSubmit, initialData }: CreateSkillModalProps) {
   const [form, setForm] = useState<CreateSkillInput>(emptyForm())
   const [errors, setErrors] = useState<Partial<Record<'name', string>>>({})
+  const [loading, setLoading] = useState(false)
   const [view, setView] = useState<RepoView>({ mode: 'browse', path: '' })
   const [emptyFolders, setEmptyFolders] = useState<Set<string>>(new Set())
   const [addingFile, setAddingFile] = useState(false)
@@ -92,6 +93,7 @@ export default function CreateSkillModal({ open, onClose, onSubmit, initialData 
       // eslint-disable-next-line react-hooks/exhaustive-deps
       setForm(initialData ? { ...emptyForm(), ...initialData } : emptyForm())
       setErrors({})
+      setLoading(false)
       setView({ mode: 'browse', path: '' })
       setEmptyFolders(new Set())
       setAddingFile(false)
@@ -221,9 +223,15 @@ export default function CreateSkillModal({ open, onClose, onSubmit, initialData 
     return Object.keys(next).length === 0
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (validate()) onSubmit(form)
+    if (!validate()) return
+    setLoading(true)
+    try {
+      await onSubmit(form)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (!open) return null
@@ -607,11 +615,12 @@ export default function CreateSkillModal({ open, onClose, onSubmit, initialData 
 
           {/* ── Footer ── */}
           <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={loading}>
               Cancelar
             </Button>
-            <Button type="submit" size="sm">
-              Criar Skill
+            <Button type="submit" size="sm" disabled={loading}>
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              {loading ? 'Criando…' : 'Criar Skill'}
             </Button>
           </div>
         </form>
