@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (memberRole === 'member') return NextResponse.json({ error: 'Membros não podem editar skills' }, { status: 403 })
 
     const body = await req.json()
-    const { name, description, category, tags, status, files } = body
+    const { name, description, category, tags, status, files, groupId } = body
 
     const skill = await prisma.skill.update({
       where: { id },
@@ -74,6 +74,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             content: f.content,
           })),
         }),
+        ...('groupId' in body && { groupId: groupId ?? null }),
       },
     })
 
