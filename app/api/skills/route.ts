@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
     const body = await req.json()
-    const { name, description, category, tags, status, files: inputFiles } = body
+    const { name, description, category, tags, status, files: inputFiles, groupId } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'name é obrigatório' }, { status: 400 })
@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
         files,
         userId: activeOrgId ? null : session.user.id,
         organizationId: activeOrgId,
+        groupId: groupId ?? null,
       },
     })
 

@@ -1,12 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
-import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen, Tag, ShieldCheck } from 'lucide-react'
+import { Sparkles, Plus, AlertTriangle, RefreshCw, Trash2, Eye, Search, X, SlidersHorizontal, FileText, AlertCircle, Layers, BookOpen, Tag, ShieldCheck, Upload, ChevronDown, Check, FolderOpen } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import ThemeToggle from '@/components/ui/ThemeToggle'
 import { UserAvatar } from '@/components/ui/UserAvatar'
 import CreateSkillModal from '@/components/skills/CreateSkillModal'
+import CreateGroupModal from '@/components/skills/CreateGroupModal'
+import ManageGroupsModal from '@/components/skills/ManageGroupsModal'
 import ViewSkillModal from '@/components/skills/ViewSkillModal'
 import LearnTab from '@/components/skills/LearnTab'
 import AdminTab from '@/components/admin/AdminTab'
@@ -15,7 +17,10 @@ import { CATEGORIES, getCategoryIcon } from '@/components/skills/CategorySelect'
 import { cn } from '@/lib/utils'
 import { authClient } from '@/lib/auth-client'
 import logoSkillHub from '@/public/logo-skillhub.png'
-import type { CreateSkillInput, Skill, SkillStatus } from '@/types'
+import { getGroupColor } from '@/components/skills/GroupSelect'
+import type { CreateSkillInput, Skill, SkillGroup, SkillStatus } from '@/types'
+
+type ViewMode = 'groups' | 'loose'
 
 type ActiveTab = 'skills' | 'admin' | 'learn'
 
@@ -62,13 +67,26 @@ export default function SkillsPage() {
     setActiveTab(next)
   }
   const [skills, setSkills] = useState<Skill[]>([])
+  const [groups, setGroups] = useState<SkillGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [createInitialData, setCreateInitialData] = useState<Partial<CreateSkillInput> | null>(null)
   const [viewingSkill, setViewingSkill] = useState<Skill | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Skill | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
+  // View & selection
+  const [viewMode, setViewMode] = useState<ViewMode>('groups')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [createMenuOpen, setCreateMenuOpen] = useState(false)
+  const [groupModalOpen, setGroupModalOpen] = useState(false)
+  const [manageGroupsOpen, setManageGroupsOpen] = useState(false)
+  const [assignPickerOpen, setAssignPickerOpen] = useState(false)
+  const createMenuRef = useRef<HTMLDivElement>(null)
+
+  // Filters
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<SkillStatus | 'all'>('all')
   const [filterCategory, setFilterCategory] = useState('')
@@ -108,9 +126,13 @@ export default function SkillsPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/skills')
-      if (!res.ok) throw new Error()
-      setSkills(await res.json())
+      const [skillsRes, groupsRes] = await Promise.all([
+        fetch('/api/skills'),
+        fetch('/api/groups'),
+      ])
+      if (!skillsRes.ok) throw new Error()
+      setSkills(await skillsRes.json())
+      if (groupsRes.ok) setGroups(await groupsRes.json())
     } catch {
       setError('Não foi possível carregar as skills. Verifique a conexão com o banco.')
     } finally {
@@ -163,6 +185,118 @@ export default function SkillsPage() {
     setCreateInitialData(null)
   }
 
+  const skillCountByGroup = useMemo(() => {
+    const map: Record<string, number> = {}
+    skills.forEach((s) => { if (s.groupId) map[s.groupId] = (map[s.groupId] ?? 0) + 1 })
+    return map
+  }, [skills])
+
+  function handleGroupUpdated(updated: SkillGroup) {
+    setGroups((prev) => prev.map((g) => g.id === updated.id ? updated : g))
+  }
+
+  function handleGroupDeleted(id: string) {
+    setGroups((prev) => prev.filter((g) => g.id !== id))
+    setSkills((prev) => prev.map((s) => s.groupId === id ? { ...s, groupId: null } : s))
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function clearSelection() { setSelectedIds(new Set()) }
+
+  async function handleBatchAssignGroup(groupId: string | null) {
+    const ids = [...selectedIds]
+    await Promise.all(ids.map((id) =>
+      fetch(`/api/skills/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId }),
+      }),
+    ))
+    setSkills((prev) => prev.map((s) => selectedIds.has(s.id) ? { ...s, groupId } : s))
+    clearSelection()
+    setAssignPickerOpen(false)
+  }
+
+  // Close create menu on outside click
+  useEffect(() => {
+    if (!createMenuOpen) return
+    function handler(e: MouseEvent) {
+      if (!createMenuRef.current?.contains(e.target as Node)) setCreateMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [createMenuOpen])
+
+  function handleImportClick() {
+    const input = importInputRef.current
+    if (!input) return
+    input.setAttribute('webkitdirectory', '')
+    input.click()
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const fileList = Array.from(e.target.files ?? [])
+    if (fileList.length === 0) return
+    e.target.value = ''
+
+    const folderName = fileList[0].webkitRelativePath.split('/')[0]
+    const IGNORED = /^(node_modules|\.git)(\/|$)/
+
+    const relevant = fileList.filter((f) => {
+      const rel = f.webkitRelativePath.slice(folderName.length + 1)
+      return rel && !IGNORED.test(rel) && !rel.endsWith('.DS_Store')
+    })
+
+    const reads = relevant.map(
+      (file) =>
+        new Promise<{ path: string; content: string }>((resolve) => {
+          const rel = file.webkitRelativePath.slice(folderName.length + 1)
+          const reader = new FileReader()
+          reader.onload = (ev) => resolve({ path: rel, content: String(ev.target?.result ?? '') })
+          reader.onerror = () => resolve({ path: rel, content: '' })
+          reader.readAsText(file)
+        }),
+    )
+
+    Promise.all(reads).then((results) => {
+      const metaResult = results.find((r) => r.path === 'skill.json')
+      let meta: Partial<CreateSkillInput> = { name: folderName, status: 'draft' }
+
+      if (metaResult) {
+        try {
+          const parsed = JSON.parse(metaResult.content)
+          meta = {
+            name: parsed.name ?? folderName,
+            description: parsed.description ?? '',
+            category: parsed.category ?? '',
+            tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+            status: parsed.status === 'active' || parsed.status === 'archived' ? parsed.status : 'draft',
+          }
+        } catch { /* keep defaults */ }
+      }
+
+      const skillFiles = results
+        .filter((r) => r.path !== 'skill.json')
+        .map((r) => ({ id: crypto.randomUUID(), name: r.path, content: r.content }))
+
+      if (skillFiles.length === 0) {
+        skillFiles.push({ id: crypto.randomUUID(), name: 'SKILL.md', content: '' })
+      }
+
+      handleOpenCreateModal({ ...meta, files: skillFiles })
+    }).catch(() => {
+      setImportError('Erro ao ler a pasta. Tente novamente.')
+      setTimeout(() => setImportError(null), 4000)
+    })
+  }
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
       {/* ── Header ── */}
@@ -175,10 +309,39 @@ export default function SkillsPage() {
             <OrgSwitcher onSwitch={fetchSkills} />
             <ThemeToggle />
             {activeTab === 'skills' && canManage && (
-              <Button size="sm" className="hidden sm:flex" onClick={() => handleOpenCreateModal()}>
-                <Plus className="h-3.5 w-3.5" />
-                Nova Skill
-              </Button>
+              <>
+                <input ref={importInputRef} type="file" className="hidden" onChange={handleImportFile} />
+                <Button size="sm" variant="ghost" className="hidden sm:flex" onClick={handleImportClick}>
+                  <Upload className="h-3.5 w-3.5" /> Importar
+                </Button>
+                {/* Split create button */}
+                <div ref={createMenuRef} className="relative hidden sm:block">
+                  <Button size="sm" onClick={() => setCreateMenuOpen((v) => !v)}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Criar
+                    <ChevronDown className={cn('h-3 w-3 transition-transform', createMenuOpen && 'rotate-180')} />
+                  </Button>
+                  {createMenuOpen && (
+                    <div className="absolute right-0 top-full z-50 mt-1.5 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                      <button
+                        onClick={() => { handleOpenCreateModal(); setCreateMenuOpen(false) }}
+                        className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        <FileText className="h-4 w-4 text-primary-500" />
+                        Nova Skill
+                      </button>
+                      <div className="border-t border-slate-100 dark:border-slate-800" />
+                      <button
+                        onClick={() => { setGroupModalOpen(true); setCreateMenuOpen(false) }}
+                        className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        <Layers className="h-4 w-4 text-violet-500" />
+                        Novo Grupo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
             <UserAvatar />
           </div>
@@ -246,15 +409,13 @@ export default function SkillsPage() {
         {activeTab === 'skills' && (
           <div key="skills" className={tabDir === 'right' ? 'tab-slide-right' : 'tab-slide-left'}>
             {/* Page title */}
-            <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                   {activeOrg ? activeOrg.name : 'Suas Skills'}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {activeOrg
-                    ? `Skills da organização ${activeOrg.name}`
-                    : 'Automações configuradas para o Claude.'}
+                  {activeOrg ? `Skills da organização ${activeOrg.name}` : 'Automações configuradas para o Claude.'}
                 </p>
               </div>
               {!loading && skills.length > 0 && (
@@ -274,6 +435,68 @@ export default function SkillsPage() {
                 </div>
               )}
             </div>
+
+            {/* ── View mode toggle ── */}
+            {!loading && (
+              <div className="mb-6 flex items-center gap-3">
+                <button
+                  onClick={() => setViewMode('groups')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-2.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all',
+                    viewMode === 'groups'
+                      ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm dark:border-primary-600 dark:bg-primary-950/60 dark:text-primary-300'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-600',
+                  )}
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  Grupos
+                  <span className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-medium',
+                    viewMode === 'groups' ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/60 dark:text-primary-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+                  )}>
+                    {groups.length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setViewMode('loose')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-2.5 rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all',
+                    viewMode === 'loose'
+                      ? 'border-violet-500 bg-violet-50 text-violet-700 shadow-sm dark:border-violet-600 dark:bg-violet-950/60 dark:text-violet-300'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-600',
+                  )}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Skills
+                  <span className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-medium',
+                    viewMode === 'loose' ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/60 dark:text-violet-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+                  )}>
+                    {skills.filter((s) => !s.groupId).length}
+                  </span>
+                </button>
+                {canManage && groups.length > 0 && (
+                  <button
+                    onClick={() => setManageGroupsOpen(true)}
+                    className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-violet-700 dark:hover:bg-violet-950/30 dark:hover:text-violet-400"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Gerenciar grupos
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Import error */}
+            {importError && (
+              <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {importError}
+                <button onClick={() => setImportError(null)} className="ml-auto rounded p-0.5 hover:text-amber-900 dark:hover:text-amber-200">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
@@ -408,76 +631,196 @@ export default function SkillsPage() {
               </div>
             )}
 
-            {/* Grid */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {loading
-                ? Array.from({ length: 3 }).map((_, i) => <SkillCardSkeleton key={i} />)
-                : filteredSkills.map((skill) => (
-                  <SkillCard
-                    key={skill.id}
-                    skill={skill}
-                    onView={setViewingSkill}
-                    onDeleteRequest={setPendingDelete}
-                    canManage={canManage}
-                  />
-                ))}
+            {/* ── Loading skeleton ── */}
+            {loading && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => <SkillCardSkeleton key={i} />)}
+              </div>
+            )}
 
-              {/* New skill card — hide when actively filtering or no permission */}
-              {!loading && !isFiltered && canManage && (
-                <button
-                  onClick={() => handleOpenCreateModal()}
-                  className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
-                >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
-                    <Plus className="h-4 w-4 text-slate-400 transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400" />
+            {/* ── Groups view ── */}
+            {!loading && viewMode === 'groups' && (() => {
+              const looseSkills = filteredSkills.filter((s) => !s.groupId)
+              return (
+                <div className="space-y-8">
+                  {groups.map((group) => {
+                    const groupSkills = filteredSkills.filter((s) => s.groupId === group.id)
+                    const gc = getGroupColor(group.color)
+                    return (
+                      <div key={group.id}>
+                        {/* Group header */}
+                        <div className="mb-3 flex items-center gap-3">
+                          <span className={cn('flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold', gc.badge)}>
+                            <span className={cn('h-2 w-2 rounded-full', gc.dot)} />
+                            {group.name}
+                          </span>
+                          <span className="text-xs text-slate-400 dark:text-slate-500">{groupSkills.length} {groupSkills.length === 1 ? 'skill' : 'skills'}</span>
+                          {group.description && (
+                            <span className="hidden truncate text-xs text-slate-400 dark:text-slate-500 sm:block">— {group.description}</span>
+                          )}
+                        </div>
+                        {groupSkills.length > 0 ? (
+                          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {groupSkills.map((skill) => (
+                              <SkillCard
+                                key={skill.id}
+                                skill={skill}
+                                group={group}
+                                selected={selectedIds.has(skill.id)}
+                                selecting={selectedIds.size > 0}
+                                onSelect={canManage ? toggleSelect : undefined}
+                                onView={(s) => selectedIds.size > 0 && canManage ? toggleSelect(s.id) : setViewingSkill(s)}
+                                onDeleteRequest={setPendingDelete}
+                                canManage={canManage}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
+                            Nenhuma skill neste grupo {isFiltered ? 'com esses filtros' : ''}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {/* Sem grupo section */}
+                  {(looseSkills.length > 0 || (!isFiltered && canManage)) && (
+                    <div>
+                      <div className="mb-3 flex items-center gap-3">
+                        <span className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Sem grupo
+                        </span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">{looseSkills.length} {looseSkills.length === 1 ? 'skill' : 'skills'}</span>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {looseSkills.map((skill) => (
+                          <SkillCard
+                            key={skill.id}
+                            skill={skill}
+                            selected={selectedIds.has(skill.id)}
+                            selecting={selectedIds.size > 0}
+                            onSelect={canManage ? toggleSelect : undefined}
+                            onView={(s) => selectedIds.size > 0 && canManage ? toggleSelect(s.id) : setViewingSkill(s)}
+                            onDeleteRequest={setPendingDelete}
+                            canManage={canManage}
+                          />
+                        ))}
+                        {!isFiltered && canManage && (
+                          <>
+                            <button
+                              onClick={() => handleOpenCreateModal()}
+                              className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
+                            >
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
+                                <Plus className="h-4 w-4 text-slate-400 transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400" />
+                              </div>
+                              <span className="text-sm font-medium text-slate-400 group-hover:text-primary-600 dark:text-slate-500 dark:group-hover:text-primary-400">Nova Skill</span>
+                            </button>
+                            <button
+                              onClick={handleImportClick}
+                              className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-violet-400 hover:bg-violet-50 dark:border-slate-800 dark:hover:border-violet-700 dark:hover:bg-violet-950/20"
+                            >
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-violet-100 dark:bg-slate-800 dark:group-hover:bg-violet-950">
+                                <Upload className="h-4 w-4 text-slate-400 transition-colors group-hover:text-violet-600 dark:group-hover:text-violet-400" />
+                              </div>
+                              <span className="text-sm font-medium text-slate-400 group-hover:text-violet-600 dark:text-slate-500 dark:group-hover:text-violet-400">Importar Skill</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty state — no groups and no skills */}
+                  {groups.length === 0 && skills.length === 0 && !error && (
+                    <div className="mt-12 flex flex-col items-center gap-4 text-center">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-950">
+                        <Layers className="h-8 w-8 text-primary-600 dark:text-primary-400" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhum grupo ainda</p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                          {canManage ? 'Crie um grupo para organizar suas skills.' : 'Nenhum grupo foi criado ainda.'}
+                        </p>
+                      </div>
+                      {canManage && (
+                        <div className="flex items-center gap-2">
+                          <Button onClick={() => setGroupModalOpen(true)}>
+                            <Layers className="h-4 w-4" /> Criar grupo
+                          </Button>
+                          <Button variant="ghost" onClick={() => handleOpenCreateModal()}>
+                            <Plus className="h-4 w-4" /> Nova Skill
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* ── Loose skills view ── */}
+            {!loading && viewMode === 'loose' && (() => {
+              const looseSkills = filteredSkills.filter((s) => !s.groupId)
+              return (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {looseSkills.map((skill) => (
+                      <SkillCard
+                        key={skill.id}
+                        skill={skill}
+                        selected={selectedIds.has(skill.id)}
+                        selecting={selectedIds.size > 0}
+                        onSelect={canManage ? toggleSelect : undefined}
+                        onView={(s) => selectedIds.size > 0 && canManage ? toggleSelect(s.id) : setViewingSkill(s)}
+                        onDeleteRequest={setPendingDelete}
+                        canManage={canManage}
+                      />
+                    ))}
+                    {!isFiltered && canManage && (
+                      <>
+                        <button
+                          onClick={() => handleOpenCreateModal()}
+                          className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-primary-400 hover:bg-primary-50 dark:border-slate-800 dark:hover:border-primary-700 dark:hover:bg-primary-950/20"
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-primary-100 dark:bg-slate-800 dark:group-hover:bg-primary-950">
+                            <Plus className="h-4 w-4 text-slate-400 transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-400 group-hover:text-primary-600 dark:text-slate-500 dark:group-hover:text-primary-400">Nova Skill</span>
+                        </button>
+                        <button
+                          onClick={handleImportClick}
+                          className="group flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-5 text-center transition-all hover:border-violet-400 hover:bg-violet-50 dark:border-slate-800 dark:hover:border-violet-700 dark:hover:bg-violet-950/20"
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 transition-colors group-hover:bg-violet-100 dark:bg-slate-800 dark:group-hover:bg-violet-950">
+                            <Upload className="h-4 w-4 text-slate-400 transition-colors group-hover:text-violet-600 dark:group-hover:text-violet-400" />
+                          </div>
+                          <span className="text-sm font-medium text-slate-400 group-hover:text-violet-600 dark:text-slate-500 dark:group-hover:text-violet-400">Importar Skill</span>
+                        </button>
+                      </>
+                    )}
                   </div>
-                  <span className="text-sm font-medium text-slate-400 group-hover:text-primary-600 dark:text-slate-500 dark:group-hover:text-primary-400">
-                    Nova Skill
-                  </span>
-                </button>
-              )}
-            </div>
-
-            {/* No results (filters active, but no match) */}
-            {!loading && isFiltered && filteredSkills.length === 0 && (
-              <div className="mt-12 flex flex-col items-center gap-3 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
-                  <Search className="h-5 w-5 text-slate-400" />
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhuma skill encontrada</p>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Tente ajustar sua busca ou filtros.
-                  </p>
-                </div>
-                <button
-                  onClick={clearFilters}
-                  className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-400"
-                >
-                  Limpar filtros
-                </button>
-              </div>
-            )}
-
-            {/* Empty state (no skills at all) */}
-            {!loading && skills.length === 0 && !error && (
-              <div className="mt-16 flex flex-col items-center gap-4 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-950">
-                  <Sparkles className="h-8 w-8 text-primary-600 dark:text-primary-400" />
-                </div>
-                <div>
-                  <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhuma skill ainda</p>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    {canManage ? 'Crie sua primeira skill para o Claude usar.' : 'Nenhuma skill foi criada nesta organização ainda.'}
-                  </p>
-                </div>
-                {canManage && (
-                  <Button onClick={() => handleOpenCreateModal()}>
-                    <Plus className="h-4 w-4" /> Criar primeira skill
-                  </Button>
-                )}
-              </div>
-            )}
+                  {looseSkills.length === 0 && !isFiltered && (
+                    <div className="mt-12 flex flex-col items-center gap-3 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+                        <Sparkles className="h-5 w-5 text-slate-400" />
+                      </div>
+                      <p className="font-semibold text-slate-900 dark:text-slate-100">Todas as skills estão em grupos</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Skills sem grupo aparecem aqui.</p>
+                    </div>
+                  )}
+                  {isFiltered && looseSkills.length === 0 && (
+                    <div className="mt-12 flex flex-col items-center gap-3 text-center">
+                      <Search className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                      <p className="font-semibold text-slate-900 dark:text-slate-100">Nenhuma skill encontrada</p>
+                      <button onClick={clearFilters} className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-400">Limpar filtros</button>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         )}
       </main>
@@ -487,6 +830,8 @@ export default function SkillsPage() {
         onClose={handleModalClose}
         onSubmit={handleCreate}
         initialData={createInitialData}
+        groups={groups}
+        onGroupCreated={(g) => setGroups((prev) => [...prev, g].sort((a, b) => a.name.localeCompare(b.name)))}
       />
       <ViewSkillModal
         skill={viewingSkill}
@@ -494,6 +839,8 @@ export default function SkillsPage() {
         onUpdate={handleUpdate}
         onDelete={handleDelete}
         canManage={canManage}
+        groups={groups}
+        onGroupCreated={(g) => setGroups((prev) => [...prev, g].sort((a, b) => a.name.localeCompare(b.name)))}
       />
       <DeleteConfirmDialog
         skill={pendingDelete}
@@ -503,28 +850,136 @@ export default function SkillsPage() {
           setPendingDelete(null)
         }}
       />
+      <CreateGroupModal
+        open={groupModalOpen}
+        onClose={() => setGroupModalOpen(false)}
+        onCreated={(g) => {
+          setGroups((prev) => [...prev, g].sort((a, b) => a.name.localeCompare(b.name)))
+          setGroupModalOpen(false)
+        }}
+      />
+      <ManageGroupsModal
+        open={manageGroupsOpen}
+        onClose={() => setManageGroupsOpen(false)}
+        groups={groups}
+        skillCountByGroup={skillCountByGroup}
+        onGroupUpdated={handleGroupUpdated}
+        onGroupDeleted={handleGroupDeleted}
+        onGroupCreated={(g) => setGroups((prev) => [...prev, g].sort((a, b) => a.name.localeCompare(b.name)))}
+      />
+
+      {/* ── Floating selection bar ── */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              {selectedIds.size} {selectedIds.size === 1 ? 'skill selecionada' : 'skills selecionadas'}
+            </span>
+            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+            {/* Assign to group picker */}
+            <div className="relative">
+              <button
+                onClick={() => setAssignPickerOpen((v) => !v)}
+                className="flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-700"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+                Mover para grupo
+                <ChevronDown className={cn('h-3 w-3 transition-transform', assignPickerOpen && 'rotate-180')} />
+              </button>
+              {assignPickerOpen && (
+                <div className="absolute bottom-full left-0 mb-2 min-w-[200px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                  <button
+                    onClick={() => handleBatchAssignGroup(null)}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-500 transition-colors hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+                  >
+                    <X className="h-3.5 w-3.5" /> Remover do grupo
+                  </button>
+                  {groups.length > 0 && <div className="border-t border-slate-100 dark:border-slate-800" />}
+                  {groups.map((g) => {
+                    const gc = getGroupColor(g.color)
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => handleBatchAssignGroup(g.id)}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        <span className={cn('h-2 w-2 rounded-full shrink-0', gc.dot)} />
+                        <span className="truncate">{g.name}</span>
+                      </button>
+                    )
+                  })}
+                  <div className="border-t border-slate-100 dark:border-slate-800" />
+                  <button
+                    onClick={() => { setAssignPickerOpen(false); setGroupModalOpen(true) }}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/30"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Criar novo grupo
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={clearSelection}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function SkillCard({
   skill,
+  group,
+  selected = false,
+  selecting = false,
+  onSelect,
   onView,
   onDeleteRequest,
   canManage = true,
 }: {
   skill: Skill
+  group?: SkillGroup
+  selected?: boolean
+  selecting?: boolean
+  onSelect?: (id: string) => void
   onView: (s: Skill) => void
   onDeleteRequest: (s: Skill) => void
   canManage?: boolean
 }) {
   const CategoryIcon = getCategoryIcon(skill.category)
+  const groupColor = group ? getGroupColor(group.color) : null
 
   return (
     <div
       onClick={() => onView(skill)}
-      className="group relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
+      className={cn(
+        'group relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900',
+        selected
+          ? 'border-primary-400 ring-2 ring-primary-200 dark:border-primary-600 dark:ring-primary-900'
+          : 'border-slate-200 dark:border-slate-800',
+      )}
     >
+      {/* Checkbox: aparece no hover sempre; fica visível fixo quando há seleção ativa */}
+      {onSelect && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSelect(skill.id) }}
+          className={cn(
+            'absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded border-2 transition-all',
+            selected
+              ? 'border-primary-500 bg-primary-500 opacity-100'
+              : selecting
+                ? 'border-slate-300 bg-white opacity-100 dark:border-slate-600 dark:bg-slate-800'
+                : 'border-slate-300 bg-white opacity-0 group-hover:opacity-100 dark:border-slate-600 dark:bg-slate-800',
+          )}
+        >
+          {selected && <Check className="h-3 w-3 text-white" />}
+        </button>
+      )}
+
       {/* Top row */}
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -569,7 +1024,13 @@ function SkillCard({
 
       {/* Footer */}
       <div className="mt-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {group && (
+            <span className={cn('flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', groupColor?.badge)}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', groupColor?.dot)} />
+              <span className="max-w-[80px] truncate">{group.name}</span>
+            </span>
+          )}
           {skill.category && (
             <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
               {skill.category}
@@ -580,27 +1041,26 @@ function SkillCard({
             {skill.files?.length ?? 0}
           </span>
         </div>
-        <div
-          className="flex items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => onView(skill)}
-            className="rounded-md p-1.5 text-slate-400 opacity-0 transition-all hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-            title="Ver detalhes"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </button>
-          {canManage && (
+        {!selecting && (
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => onDeleteRequest(skill)}
-              className="rounded-md p-1.5 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-red-950/30"
-              title="Excluir skill"
+              onClick={() => onView(skill)}
+              className="rounded-md p-1.5 text-slate-400 opacity-0 transition-all hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              title="Ver detalhes"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Eye className="h-3.5 w-3.5" />
             </button>
-          )}
-        </div>
+            {canManage && (
+              <button
+                onClick={() => onDeleteRequest(skill)}
+                className="rounded-md p-1.5 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-red-950/30"
+                title="Excluir skill"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

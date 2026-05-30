@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import {
   X, Pencil, Check, Trash2, CalendarDays, RefreshCw,
-  FileText, FolderOpen, Plus, ChevronDown, ChevronRight, ArrowLeft, Copy, Download, Tag,
+  FileText, FolderOpen, Plus, ChevronDown, ChevronRight, ArrowLeft, Copy, Download, Tag, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Button from '@/components/ui/Button'
 import CategorySelect, { getCategoryIcon } from '@/components/skills/CategorySelect'
 import { CodeEditorField } from '@/components/skills/CodeEditorField'
 import { TagsInput } from '@/components/skills/CreateSkillModal'
-import type { Skill, SkillFile, SkillStatus } from '@/types'
+import GroupSelect, { getGroupColor } from '@/components/skills/GroupSelect'
+import type { Skill, SkillFile, SkillStatus, SkillGroup } from '@/types'
 
 interface ViewSkillModalProps {
   skill: Skill | null
@@ -19,6 +20,8 @@ interface ViewSkillModalProps {
   onUpdate: (id: string, data: Partial<Omit<Skill, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>
   onDelete: (id: string) => void
   canManage?: boolean
+  groups: SkillGroup[]
+  onGroupCreated: (group: SkillGroup) => void
 }
 
 const STATUS_BADGE: Record<SkillStatus, string> = {
@@ -46,7 +49,7 @@ function formatDate(dateStr: string) {
   return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-type EditForm = { name: string; description: string; category: string; tags: string[]; status: SkillStatus }
+type EditForm = { name: string; description: string; category: string; tags: string[]; status: SkillStatus; groupId: string | null }
 
 type DirItem = { kind: 'file'; name: string; file: SkillFile } | { kind: 'folder'; name: string }
 
@@ -94,9 +97,9 @@ function groupFiles(files: SkillFile[]) {
   return { root, folders }
 }
 
-export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, canManage = true }: ViewSkillModalProps) {
+export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, canManage = true, groups, onGroupCreated }: ViewSkillModalProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view')
-  const [form, setForm] = useState<EditForm>({ name: '', description: '', category: '', tags: [], status: 'draft' })
+  const [form, setForm] = useState<EditForm>({ name: '', description: '', category: '', tags: [], status: 'draft', groupId: null })
   const [files, setFiles] = useState<SkillFile[]>([])
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
@@ -114,7 +117,7 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
 
   useEffect(() => {
     if (skill) {
-      setForm({ name: skill.name, description: skill.description, category: skill.category, tags: skill.tags ?? [], status: skill.status })
+      setForm({ name: skill.name, description: skill.description, category: skill.category, tags: skill.tags ?? [], status: skill.status, groupId: skill.groupId ?? null })
       setFiles(skill.files ?? [])
       setMode('view')
       setDeleteConfirm(false)
@@ -194,7 +197,7 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
 
   function handleCancel() {
     if (!skill) return
-    setForm({ name: skill.name, description: skill.description, category: skill.category, tags: skill.tags ?? [], status: skill.status })
+    setForm({ name: skill.name, description: skill.description, category: skill.category, tags: skill.tags ?? [], status: skill.status, groupId: skill.groupId ?? null })
     setFiles(skill.files ?? [])
     setEditPath('')
     setEmptyFolders(new Set())
@@ -239,6 +242,8 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
   const CategoryIcon = getCategoryIcon(skill.category)
   const { root, folders } = groupFiles(files)
   const isEditing = mode === 'edit'
+  const currentGroup = skill.groupId ? groups.find((g) => g.id === skill.groupId) : null
+  const groupColor = currentGroup ? getGroupColor(currentGroup.color) : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -286,6 +291,12 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
                   <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[skill.status])} />
                   {STATUS_LABELS[skill.status]}
                 </span>
+                {currentGroup && (
+                  <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white/80 ring-1 ring-white/15">
+                    <span className={cn('h-1.5 w-1.5 rounded-full', groupColor?.dot)} />
+                    {currentGroup.name}
+                  </span>
+                )}
                 <span className="ml-auto flex items-center gap-1 rounded-md bg-white/10 px-2 py-0.5 text-xs text-white/60">
                   <FileText className="h-3 w-3" />
                   {files.length} {files.length === 1 ? 'arquivo' : 'arquivos'}
@@ -379,6 +390,16 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
                         </label>
                       ))}
                     </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Grupo</label>
+                    <GroupSelect
+                      groups={groups}
+                      value={form.groupId}
+                      onChange={(id) => setField('groupId', id)}
+                      onGroupCreated={onGroupCreated}
+                      disabled={saving}
+                    />
                   </div>
                 </div>
               </>
@@ -638,7 +659,9 @@ export default function ViewSkillModal({ skill, onClose, onUpdate, onDelete, can
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={handleCancel}>Cancelar</Button>
               <Button size="sm" onClick={handleSave} disabled={saving}>
-                <Check className="h-3.5 w-3.5" />
+                {saving
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Check className="h-3.5 w-3.5" />}
                 {saving ? 'Salvando…' : 'Salvar'}
               </Button>
             </div>

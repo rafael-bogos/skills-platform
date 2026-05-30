@@ -22,6 +22,7 @@ model user {
   accounts      account[]
   members       member[]
   skills        Skill[]
+  skillGroups   SkillGroup[]
 }
 
 model session {
@@ -78,6 +79,7 @@ model organization {
   invitations invitation[]
   inviteLinks InviteLink[]
   skills      Skill[]
+  skillGroups SkillGroup[]
 }
 
 model InviteLink {
@@ -121,6 +123,21 @@ type SkillFile {
   content String
 }
 
+model SkillGroup {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String   @default("")
+  color       String   @default("slate")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId         String?       @db.ObjectId
+  user           user?         @relation(fields: [userId], references: [id])
+  organizationId String?       @db.ObjectId
+  organization   organization? @relation(fields: [organizationId], references: [id])
+  skills         Skill[]
+}
+
 model Skill {
   id          String      @id @default(auto()) @map("_id") @db.ObjectId
   name        String
@@ -136,6 +153,8 @@ model Skill {
   user           user?         @relation(fields: [userId], references: [id])
   organizationId String?       @db.ObjectId
   organization   organization? @relation(fields: [organizationId], references: [id])
+  groupId        String?       @db.ObjectId
+  group          SkillGroup?   @relation(fields: [groupId], references: [id])
 }
 
 enum SkillStatus {
